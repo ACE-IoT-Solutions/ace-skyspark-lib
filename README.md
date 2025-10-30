@@ -115,7 +115,7 @@ points = await client.create_points([
     Point(
         dis="Temperature Sensor",
         kind="Number",
-        unit="°F",
+        unit="Â°F",
         site_ref="p:demo:r:site_id",
         equip_ref="p:demo:r:equip_id",
         refName="temp_sensor_1",
