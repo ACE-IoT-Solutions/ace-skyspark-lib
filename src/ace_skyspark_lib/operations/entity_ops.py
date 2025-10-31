@@ -150,6 +150,9 @@ class EntityOperations:
     async def delete_entity(self, entity_id: str | dict[str, Any]) -> None:
         """Delete entity by ID.
 
+        SkySpark requires the mod field for optimistic locking - we need to read
+        the entity first to get its current mod timestamp.
+
         Args:
             entity_id: Entity ID to delete (string or dict from SkySpark response)
 
@@ -165,9 +168,32 @@ class EntityOperations:
         elif isinstance(entity_id, str):
             entity_id = entity_id.lstrip("@")
 
+        # Read the entity first to get the mod field (required for optimistic locking)
+        read_grid = 'ver:"3.0"\n'
+        read_grid += "filter\n"
+        read_grid += f'"id==@{entity_id}"\n'
+
+        read_response = await self.session.post_zinc("read", read_grid)
+        rows = read_response.get("rows", [])
+
+        if not rows:
+            raise EntityNotFoundError(f"Entity {entity_id} not found")
+
+        entity = rows[0]
+        mod_field = entity.get("mod", "")
+
+        # Extract mod timestamp - it comes as a dict {"_kind": "dateTime", "val": "...", "tz": "..."}
+        if isinstance(mod_field, dict):
+            mod_val = mod_field.get("val", "")
+            mod_tz = mod_field.get("tz", "UTC")
+            mod_timestamp = f"{mod_val} {mod_tz}"
+        else:
+            mod_timestamp = str(mod_field)
+
+        # Build delete grid with id and mod columns
         zinc_grid = 'ver:"3.0" commit:"remove"\n'
-        zinc_grid += "id\n"
-        zinc_grid += f"@{entity_id}\n"
+        zinc_grid += "id, mod\n"
+        zinc_grid += f"@{entity_id}, {mod_timestamp}\n"
 
         response = await self.session.post_zinc("commit", zinc_grid)
 

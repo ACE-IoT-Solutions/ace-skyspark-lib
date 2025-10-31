@@ -100,12 +100,10 @@ async def test_integration_create_site() -> None:
         assert "id" in created_sites[0]
         print(f"\n✓ Created site with ID: {created_sites[0]['id']}")
 
-        # TODO: Clean up - delete operation currently has issues with SkySpark
-        # See: https://github.com/anthropics/ace-skyspark-lib/issues/XXX
-        # Error: "haystack::UnknownNameErr: mod" when attempting delete
-        # site_id = created_sites[0]["id"]
-        # await client.delete_entity(site_id)
-        print("⚠️  Skipping cleanup - delete operation requires investigation")
+        # Clean up - delete the test site
+        site_id = created_sites[0]["id"]
+        await client.delete_entity(site_id)
+        print(f"✓ Cleaned up test site: {site_id}")
 
 
 @pytest.mark.asyncio
@@ -153,10 +151,10 @@ async def test_integration_create_point() -> None:
         point_id = created_points[0]["id"]
         print(f"✓ Created point with ID: {point_id}")
 
-        # TODO: Clean up - delete operation requires investigation
-        # await client.delete_entity(point_id)
-        # await client.delete_entity(equip_id)
-        print("⚠️  Skipping cleanup - delete operation requires investigation")
+        # Clean up - delete point and equipment
+        await client.delete_entity(point_id)
+        await client.delete_entity(equip_id)
+        print("✓ Cleaned up test entities")
 
 
 @pytest.mark.asyncio
@@ -217,9 +215,9 @@ async def test_integration_update_point() -> None:
         assert read_point.get("dis") == "Updated Test Point"
         print(f"✓ Verified updated point: {read_point['dis']}")
 
-        # TODO: Clean up - delete operation requires investigation
-        # await client.delete_entity(point_id)
-        print("⚠️  Skipping cleanup - delete operation requires investigation")
+        # Clean up
+        await client.delete_entity(point_id)
+        print("✓ Cleaned up test point")
 
 
 @pytest.mark.asyncio
