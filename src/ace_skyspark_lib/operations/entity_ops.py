@@ -147,17 +147,23 @@ class EntityOperations:
         logger.info("update_points_complete", count=len(rows))
         return rows
 
-    async def delete_entity(self, entity_id: str) -> None:
+    async def delete_entity(self, entity_id: str | dict[str, Any]) -> None:
         """Delete entity by ID.
 
         Args:
-            entity_id: Entity ID to delete
+            entity_id: Entity ID to delete (string or dict from SkySpark response)
 
         Raises:
             CommitError: If delete operation fails
             EntityNotFoundError: If entity does not exist
         """
         logger.info("delete_entity", entity_id=entity_id)
+
+        # Extract ID from dict if needed (SkySpark returns refs as dicts)
+        if isinstance(entity_id, dict):
+            entity_id = entity_id.get("val", "").lstrip("@")
+        elif isinstance(entity_id, str):
+            entity_id = entity_id.lstrip("@")
 
         zinc_grid = 'ver:"3.0" commit:"remove"\n'
         zinc_grid += "id\n"

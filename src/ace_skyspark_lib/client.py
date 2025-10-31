@@ -1,5 +1,7 @@
 """Main SkySpark client class."""
 
+from typing import Any
+
 import httpx
 import structlog
 
@@ -263,11 +265,11 @@ class SkysparkClient:
             raise RuntimeError(msg)
         return await self._entities.update_points(points)
 
-    async def delete_entity(self, entity_id: str) -> None:
+    async def delete_entity(self, entity_id: str | dict[str, Any]) -> None:
         """Delete entity by ID.
 
         Args:
-            entity_id: Entity ID to delete
+            entity_id: Entity ID to delete (string or dict from SkySpark response)
         """
         if not self._entities:
             msg = "Client not initialized. Use 'async with' context manager."
