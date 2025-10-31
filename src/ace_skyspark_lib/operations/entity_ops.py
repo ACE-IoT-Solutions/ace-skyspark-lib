@@ -82,6 +82,43 @@ class EntityOperations:
         logger.info("create_equipment_complete", count=len(rows))
         return rows
 
+    async def update_equipment(self, equipment: list[Equipment]) -> list[dict[str, Any]]:
+        """Update multiple equipment.
+
+        Args:
+            equipment: List of Equipment models to update (must have IDs)
+
+        Returns:
+            List of updated equipment dictionaries
+
+        Raises:
+            CommitError: If commit operation fails
+            ValueError: If any equipment is missing an ID
+        """
+        if not equipment:
+            return []
+
+        # Validate all equipment have IDs
+        for equip in equipment:
+            if not equip.id:
+                msg = f"Equipment {equip.dis} must have an ID for update operations"
+                raise ValueError(msg)
+
+        logger.info("update_equipment", count=len(equipment))
+
+        zinc_grid = ZincEncoder.encode_commit_update_equipment(equipment)
+        logger.debug("update_equipment_zinc_grid", grid=zinc_grid)
+        response = await self.session.post_zinc("commit", zinc_grid)
+
+        if response.get("meta", {}).get("err"):
+            error_msg = response.get("meta", {}).get("dis", "Unknown error")
+            logger.error("update_equipment_failed", error=error_msg)
+            raise CommitError(error_msg)
+
+        rows = response.get("rows", [])
+        logger.info("update_equipment_complete", count=len(rows))
+        return rows
+
     async def create_points(self, points: list[Point]) -> list[dict[str, Any]]:
         """Create multiple points.
 

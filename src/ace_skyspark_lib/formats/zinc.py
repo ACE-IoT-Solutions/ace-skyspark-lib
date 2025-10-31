@@ -151,6 +151,44 @@ class ZincEncoder:
         return grid
 
     @staticmethod
+    def encode_commit_update_equipment(equipment: list[Equipment]) -> str:
+        """Encode equipment for commit:update operation.
+
+        Args:
+            equipment: List of Equipment entities to update
+
+        Returns:
+            Zinc grid string
+        """
+        if not equipment:
+            return ""
+
+        grid = 'ver:"3.0" commit:"update"\n'
+
+        # Collect all unique tags (including id and mod for updates)
+        all_tags = {"id", "dis", "siteRef", "tz", "refName", "equip"}
+        for equip in equipment:
+            all_tags.update(equip.to_zinc_dict().keys())
+
+        # Header row
+        grid += ", ".join(sorted(all_tags)) + "\n"
+
+        # Data rows
+        for equip in equipment:
+            if not equip.id:
+                msg = f"Equipment {equip.dis} must have an ID for update operations"
+                raise ValueError(msg)
+
+            zinc_dict = equip.to_zinc_dict()
+            row_values: list[str] = []
+            for tag in sorted(all_tags):
+                value = zinc_dict.get(tag, "")
+                row_values.append(ZincEncoder._encode_value(value))
+            grid += ", ".join(row_values) + "\n"
+
+        return grid
+
+    @staticmethod
     def encode_commit_update_points(points: list[Point]) -> str:
         """Encode points for commit:update operation.
 
@@ -277,5 +315,10 @@ class ZincEncoder:
             iso_str = value.isoformat()
             tz_name = value.tzinfo.tzname(value) if value.tzinfo else "UTC"
             return f"{iso_str} {tz_name}"
+        if isinstance(value, dict) and value.get("_kind") == "dateTime":
+            # Handle SkySpark DateTime dict format: {"_kind": "dateTime", "val": "...", "tz": "..."}
+            val = value.get("val", "")
+            tz = value.get("tz", "UTC")
+            return f"{val} {tz}"
         # SECURITY FIX: Escape any other string-like values
         return f'"{_escape_zinc_string(str(value))}"'

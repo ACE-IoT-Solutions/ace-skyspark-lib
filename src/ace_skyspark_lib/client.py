@@ -237,6 +237,20 @@ class SkysparkClient:
             raise RuntimeError(msg)
         return await self._entities.create_equipment(equipment)
 
+    async def update_equipment(self, equipment: list[Equipment]) -> list[dict]:
+        """Update multiple equipment.
+
+        Args:
+            equipment: List of Equipment models to update (must have IDs)
+
+        Returns:
+            List of updated equipment dictionaries
+        """
+        if not self._entities:
+            msg = "Client not initialized. Use 'async with' context manager."
+            raise RuntimeError(msg)
+        return await self._entities.update_equipment(equipment)
+
     async def create_points(self, points: list[Point]) -> list[dict]:
         """Create multiple points.
 
