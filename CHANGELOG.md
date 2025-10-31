@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2025-10-30
+
+### Fixed
+- **CRITICAL**: Fixed point update operations that were completely broken due to mod field datetime round-trip issue
+  - Point.from_zinc_dict() now properly converts Zinc datetime dicts to Python datetime objects
+  - ZincEncoder now correctly formats datetime values with timezone names for SkySpark compatibility
+  - Added proper timezone handling using pytz for named timezones
+  - Resolved ClassCastException and ParseErr errors when updating points with mod timestamps
+
+### Added
+- test_mod_roundtrip.py: Unit test for datetime field encoding
+- test_point_update.py: Integration test verifying point updates work end-to-end
+
 ## [0.1.0] - 2025-10-30
 
 ### Added
