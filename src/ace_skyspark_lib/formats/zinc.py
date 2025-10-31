@@ -234,5 +234,9 @@ class ZincEncoder:
         if isinstance(value, (int, float)):
             return str(value)
         if isinstance(value, datetime):
-            return value.isoformat()
+            # Zinc datetime format: ISO8601 + space + timezone name
+            # E.g., "2025-10-30T18:30:00-04:00 New_York"
+            iso_str = value.isoformat()
+            tz_name = value.tzinfo.tzname(value) if value.tzinfo else "UTC"
+            return f"{iso_str} {tz_name}"
         return f'"{value}"'

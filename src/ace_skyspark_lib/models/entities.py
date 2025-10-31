@@ -1,9 +1,53 @@
 """Pydantic models for Haystack entities (Site, Equipment, Point)."""
 
+from datetime import datetime
 from typing import Any
 
 import pytz
+from dateutil import parser as date_parser
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def _parse_zinc_datetime(value: dict[str, Any]) -> datetime:
+    """Parse Zinc datetime dict to Python datetime.
+
+    Args:
+        value: Zinc datetime dict with 'val' and optionally 'tz'
+
+    Returns:
+        Python datetime object with proper timezone
+
+    Examples:
+        {"val": "2025-10-30T18:30:00-04:00 New_York", "tz": "New_York"}
+        -> datetime with New_York timezone
+    """
+    if not isinstance(value, dict) or "val" not in value:
+        return value
+
+    dt_str = value["val"]
+    tz_name = value.get("tz", "UTC")
+
+    # Extract timezone name from value if present (e.g., "... New_York")
+    if " " in dt_str:
+        parts = dt_str.split(" ")
+        dt_str = parts[0]
+        if len(parts) > 1 and not tz_name:
+            tz_name = parts[1]
+
+    # Parse the datetime string (gets offset timezone)
+    dt = date_parser.parse(dt_str)
+
+    # Convert to named timezone if available
+    try:
+        named_tz = pytz.timezone(tz_name)
+        # Replace offset timezone with named timezone
+        dt_naive = dt.replace(tzinfo=None)
+        dt = named_tz.localize(dt_naive, is_dst=None)
+    except Exception:
+        # If timezone name is invalid, keep the parsed timezone
+        pass
+
+    return dt
 
 
 class HaystackRef(BaseModel):
@@ -221,6 +265,9 @@ class Point(BaseModel):
             if value == "m:" or (isinstance(value, dict) and value.get("_kind") == "marker"):
                 marker_tags.append(key)
             else:
+                # Convert Zinc datetime dicts to Python datetime
+                if isinstance(value, dict) and "val" in value:
+                    value = _parse_zinc_datetime(value)
                 kv_tags[key] = value
 
         # Extract refs
