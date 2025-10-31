@@ -1,6 +1,6 @@
 [project]
 name = "ace-skyspark-lib"
-version = "0.1.1"
+version = "0.1.2"
 description = "Modern async SkySpark client library with Pydantic validation and Project Haystack compliance"
 readme = "README.md"
 license = { text = "MIT" }

@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2025-10-30
+
+### Security
+- **CRITICAL**: Fixed string injection vulnerabilities in Zinc encoding
+  - Implemented `_escape_zinc_string()` function to escape special characters
+  - Fixed unescaped double quotes that could break Zinc format parsing
+  - Fixed unescaped newlines that could break grid structure
+  - Fixed unescaped backslashes that could interfere with escape sequences
+  - Removed null bytes that could truncate strings in C-based parsers
+  - Removed control characters that could cause parser issues
+  - Applied escaping to all string values, filter expressions, and history writes
+
+### Added
+- Comprehensive security test suite (20 tests) in `tests/test_security_vulnerabilities.py`
+- `SECURITY_TEST_BASELINE.md` documenting all security vulnerabilities and fixes
+- String escaping for injection prevention in all Zinc serialization
+
+### Fixed
+- Integration test configuration (added `TEST_SKYSPARK_PROJECT` environment variable)
+- Test suite base URL handling for proper authentication
+- Point update test to handle Haystack tag omission vs removal semantics
+
+### Changed
+- All Zinc string encoding now uses proper escaping for security
+- Risk level reduced from **HIGH** to **LOW** after security fixes
+
 ## [0.1.1] - 2025-10-30
 
 ### Fixed
