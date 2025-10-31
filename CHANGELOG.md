@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2025-10-31
+
+### Fixed
+- **CRITICAL**: Fixed delete operation to include `mod` field for SkySpark optimistic locking
+  - Delete operations were failing with "haystack::UnknownNameErr: mod" error
+  - Now reads entity before delete to get current mod timestamp
+  - Properly formats mod field in Zinc datetime format
+  - Re-enabled delete cleanup in integration tests
+- Fixed `delete_entity()` to handle dict-format entity IDs from SkySpark responses
+  - Accepts both `str` and `dict[str, Any]` entity_id formats
+  - Extracts ID from `{"_kind": "ref", "val": "...", "dis": "..."}` format
+- Added missing `from typing import Any` import in client.py
+
+### Added
+- Delete operation now uses read-before-delete pattern for optimistic locking
+- Improved entity_id handling throughout delete operations
+
+### Changed
+- Delete operations now require two API calls (read + delete) for safety
+- Integration tests now successfully clean up created test entities
+
 ## [0.1.2] - 2025-10-30
 
 ### Security
