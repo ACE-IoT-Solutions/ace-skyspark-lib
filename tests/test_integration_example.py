@@ -44,7 +44,7 @@ pytestmark = pytest.mark.skipif(
 async def test_integration_workflow() -> None:
     """Complete integration test workflow."""
     async with SkysparkClient(
-        base_url=TEST_URL,
+        base_url=f"{TEST_URL}api",
         project=TEST_PROJECT,
         username=TEST_USER,
         password=TEST_PASS,
@@ -81,7 +81,7 @@ async def test_integration_workflow() -> None:
 async def test_integration_create_site() -> None:
     """Test creating a new site."""
     async with SkysparkClient(
-        base_url=TEST_URL,
+        base_url=f"{TEST_URL}api",
         project=TEST_PROJECT,
         username=TEST_USER,
         password=TEST_PASS,
@@ -111,7 +111,7 @@ async def test_integration_create_site() -> None:
 async def test_integration_create_point() -> None:
     """Test creating equipment and point."""
     async with SkysparkClient(
-        base_url=TEST_URL,
+        base_url=f"{TEST_URL}api",
         project=TEST_PROJECT,
         username=TEST_USER,
         password=TEST_PASS,
@@ -162,7 +162,7 @@ async def test_integration_create_point() -> None:
 async def test_integration_update_point() -> None:
     """Test updating point tags."""
     async with SkysparkClient(
-        base_url=TEST_URL,
+        base_url=f"{TEST_URL}api",
         project=TEST_PROJECT,
         username=TEST_USER,
         password=TEST_PASS,
@@ -225,7 +225,7 @@ async def test_integration_update_point() -> None:
 async def test_integration_write_history() -> None:
     """Test writing history samples."""
     async with SkysparkClient(
-        base_url=TEST_URL,
+        base_url=f"{TEST_URL}api",
         project=TEST_PROJECT,
         username=TEST_USER,
         password=TEST_PASS,
@@ -263,7 +263,7 @@ async def test_integration_write_history() -> None:
 async def test_integration_write_history_chunked() -> None:
     """Test chunked history write for large batches."""
     async with SkysparkClient(
-        base_url=TEST_URL,
+        base_url=f"{TEST_URL}api",
         project=TEST_PROJECT,
         username=TEST_USER,
         password=TEST_PASS,
@@ -305,7 +305,7 @@ async def test_integration_write_history_chunked() -> None:
 async def test_integration_error_handling() -> None:
     """Test error handling for invalid operations."""
     async with SkysparkClient(
-        base_url=TEST_URL,
+        base_url=f"{TEST_URL}api",
         project=TEST_PROJECT,
         username=TEST_USER,
         password=TEST_PASS,

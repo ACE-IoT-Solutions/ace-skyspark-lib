@@ -44,37 +44,38 @@ async def test_point_update_with_mod_field():
         print(f"\n✓ Read point: {point.dis} (ID: {point.id})")
         print(f"  refName: {point.ref_name}")
 
-        # Modify the point - add a marker tag if not present
-        original_tags = point.marker_tags.copy()
+        # Modify the point - add a marker tag to verify update works
+        # Note: Tag removal by omission is not supported in Haystack/SkySpark.
+        # Omitted tags are left unchanged, not removed.
         test_tag = "test_update_tag"
 
         if test_tag not in point.marker_tags:
             point.marker_tags.append(test_tag)
-            modification = "added"
-        else:
-            point.marker_tags.remove(test_tag)
-            modification = "removed"
+            print(f"  Adding '{test_tag}' tag")
 
-        print(f"  {modification} '{test_tag}' tag")
+            # Update the point (this should work even though mod was in the original data)
+            try:
+                result = await client.update_points([point])
+                print(f"✓ Successfully updated point")
+                print(f"  Response: {result}")
+            except Exception as e:
+                pytest.fail(f"Failed to update point: {e}")
 
-        # Update the point (this should work even though mod was in the original data)
-        try:
-            result = await client.update_points([point])
-            print(f"✓ Successfully updated point")
-            print(f"  Response: {result}")
-        except Exception as e:
-            pytest.fail(f"Failed to update point: {e}")
+            # Verify the update by reading back
+            updated_points = await client.read_points_as_models(equip_ref=point.equip_ref)
+            updated_point = next((p for p in updated_points if p.id == point.id), None)
 
-        # Verify the update by reading back
-        updated_points = await client.read_points_as_models(equip_ref=point.equip_ref)
-        updated_point = next((p for p in updated_points if p.id == point.id), None)
-
-        if updated_point:
-            if modification == "added":
+            if updated_point:
                 assert test_tag in updated_point.marker_tags, f"Tag {test_tag} not found after update"
-            else:
-                assert test_tag not in updated_point.marker_tags, f"Tag {test_tag} still present after removal"
-            print(f"✓ Verified update - tag was {modification}")
+                print(f"✓ Verified update - tag was added")
+        else:
+            # Tag already present - just do a no-op update to verify mod field handling
+            print(f"  Tag '{test_tag}' already present - testing no-op update")
+            try:
+                result = await client.update_points([point])
+                print(f"✓ Successfully updated point (no-op)")
+            except Exception as e:
+                pytest.fail(f"Failed to update point: {e}")
 
 
 async def main():

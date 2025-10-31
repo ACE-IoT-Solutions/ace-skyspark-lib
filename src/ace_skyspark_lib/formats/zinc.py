@@ -7,6 +7,41 @@ from ace_skyspark_lib.models.entities import Equipment, Point, Site
 from ace_skyspark_lib.models.history import HistorySample
 
 
+def _escape_zinc_string(s: str) -> str:
+    """Escape special characters for Zinc strings.
+
+    Escapes characters that have special meaning in Zinc format to prevent
+    injection vulnerabilities and ensure proper parsing.
+
+    Args:
+        s: String to escape
+
+    Returns:
+        Escaped string safe for use in Zinc format
+
+    Security:
+        - Prevents quote injection
+        - Prevents newline injection that breaks grid structure
+        - Removes null bytes that can truncate strings in C parsers
+        - Removes control characters that can cause terminal/parser issues
+    """
+    # Escape in this order to avoid double-escaping
+    s = s.replace('\\', '\\\\')  # Backslash MUST be first!
+    s = s.replace('"', '\\"')    # Double quotes
+    s = s.replace('\n', '\\n')   # Newline
+    s = s.replace('\r', '\\r')   # Carriage return
+    s = s.replace('\t', '\\t')   # Tab
+
+    # Remove null bytes (can truncate strings in C-based parsers)
+    s = s.replace('\x00', '')
+
+    # Remove control characters (except tab, newline, carriage return which we've already escaped)
+    # Control characters are 0x00-0x1F except \t(0x09), \n(0x0A), \r(0x0D)
+    s = ''.join(c for c in s if ord(c) >= 32 or c in '\t\n\r')
+
+    return s
+
+
 class ZincEncoder:
     """Encode Python objects to Zinc grid format."""
 
@@ -181,7 +216,8 @@ class ZincEncoder:
             if isinstance(sample.value, bool):
                 val_str = str(sample.value).lower()
             elif isinstance(sample.value, str):
-                val_str = f'"{sample.value}"'
+                # SECURITY FIX: Escape string values to prevent injection
+                val_str = f'"{_escape_zinc_string(sample.value)}"'
             else:
                 val_str = str(sample.value)
 
@@ -208,7 +244,8 @@ class ZincEncoder:
         """
         grid = 'ver:"3.0"\n'
         grid += "filter\n"
-        grid += f'"{filter_expr}"\n'
+        # SECURITY FIX: Escape filter expression to prevent injection
+        grid += f'"{_escape_zinc_string(filter_expr)}"\n'
         return grid
 
     @staticmethod
@@ -228,7 +265,8 @@ class ZincEncoder:
         if isinstance(value, str):
             if value.startswith("@"):  # Ref
                 return value
-            return f'"{value}"'
+            # SECURITY FIX: Escape special characters to prevent injection
+            return f'"{_escape_zinc_string(value)}"'
         if isinstance(value, bool):
             return "T" if value else "F"
         if isinstance(value, (int, float)):
@@ -239,4 +277,5 @@ class ZincEncoder:
             iso_str = value.isoformat()
             tz_name = value.tzinfo.tzname(value) if value.tzinfo else "UTC"
             return f"{iso_str} {tz_name}"
-        return f'"{value}"'
+        # SECURITY FIX: Escape any other string-like values
+        return f'"{_escape_zinc_string(str(value))}"'
