@@ -141,6 +141,10 @@ class QueryOperations:
     async def get_project_timezone(self) -> str:
         """Get the project's default timezone.
 
+        Checks for timezone in this order:
+        1. Project entity's tz tag (if project entity exists with 'proj' marker)
+        2. About endpoint's tz field (server default)
+
         Returns:
             Timezone string (e.g., "New_York", "Chicago", "UTC")
 
@@ -149,7 +153,19 @@ class QueryOperations:
         """
         logger.info("get_project_timezone")
 
-        # Query the about endpoint to get project info
+        # Try to get timezone from project entity first
+        try:
+            project_entities = await self.read_by_filter("proj")
+            if project_entities:
+                proj_tz = project_entities[0].get("tz")
+                if proj_tz:
+                    logger.info("project_timezone_found_from_entity", tz=proj_tz, source="project_entity")
+                    return str(proj_tz)
+                logger.debug("project_entity_found_but_no_tz", entity=project_entities[0])
+        except Exception as e:
+            logger.warning("failed_to_read_project_entity", error=str(e))
+
+        # Fall back to about endpoint (server default timezone)
         response = await self.session.get_json("about")
 
         # Extract timezone from response (it's in the rows array)
@@ -171,5 +187,5 @@ class QueryOperations:
             logger.error("project_timezone_not_found", response=response)
             raise ValueError(msg)
 
-        logger.info("project_timezone_found", tz=tz)
+        logger.info("project_timezone_found_from_about", tz=tz, source="about_endpoint")
         return str(tz)

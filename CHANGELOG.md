@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2025-11-01
+
+### Changed
+- Improved `get_project_timezone()` with two-tier fallback strategy
+  - First tries to get timezone from project entity (with `proj` marker)
+  - Falls back to `about` endpoint if project entity doesn't have timezone
+  - More accurate timezone detection using project-specific settings
+- Enhanced logging to indicate timezone source (project entity vs about endpoint)
+- Better error handling with warnings instead of failures when reading project entity
+
 ## [0.1.5] - 2025-11-01
 
 ### Changed
