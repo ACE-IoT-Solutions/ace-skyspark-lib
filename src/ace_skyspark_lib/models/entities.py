@@ -96,9 +96,13 @@ class Site(BaseModel):
     @field_validator("tz")
     @classmethod
     def validate_timezone(cls, v: str) -> str:
-        """Validate timezone is in IANA tz database."""
-        if v not in pytz.all_timezones_set:
-            msg = f"Invalid timezone: {v}"
+        """Validate timezone format.
+
+        Note: SkySpark may use timezone names that differ from IANA database.
+        We accept any non-empty string to support SkySpark-specific formats.
+        """
+        if not v or not v.strip():
+            msg = "Timezone cannot be empty"
             raise ValueError(msg)
         return v
 
@@ -170,9 +174,13 @@ class Equipment(BaseModel):
     @field_validator("tz")
     @classmethod
     def validate_timezone(cls, v: str) -> str:
-        """Validate timezone."""
-        if v not in pytz.all_timezones_set:
-            msg = f"Invalid timezone: {v}"
+        """Validate timezone format.
+
+        Note: SkySpark may use timezone names that differ from IANA database.
+        We accept any non-empty string to support SkySpark-specific formats.
+        """
+        if not v or not v.strip():
+            msg = "Timezone cannot be empty"
             raise ValueError(msg)
         return v
 
@@ -268,9 +276,13 @@ class Point(BaseModel):
     @field_validator("tz")
     @classmethod
     def validate_timezone(cls, v: str) -> str:
-        """Validate timezone."""
-        if v not in pytz.all_timezones_set:
-            msg = f"Invalid timezone: {v}"
+        """Validate timezone format.
+
+        Note: SkySpark may use timezone names that differ from IANA database.
+        We accept any non-empty string to support SkySpark-specific formats.
+        """
+        if not v or not v.strip():
+            msg = "Timezone cannot be empty"
             raise ValueError(msg)
         return v
 

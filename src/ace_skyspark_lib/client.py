@@ -208,6 +208,20 @@ class SkysparkClient:
             raise RuntimeError(msg)
         return await self._query.read_points_as_models(site_ref=site_ref, equip_ref=equip_ref)
 
+    async def get_project_timezone(self) -> str:
+        """Get the project's default timezone.
+
+        Returns:
+            Timezone string (e.g., "New_York", "Chicago")
+
+        Raises:
+            ValueError: If timezone cannot be determined
+        """
+        if not self._query:
+            msg = "Client not initialized. Use 'async with' context manager."
+            raise RuntimeError(msg)
+        return await self._query.get_project_timezone()
+
     # Entity operations
     async def create_sites(self, sites: list[Site]) -> list[dict]:
         """Create multiple sites.

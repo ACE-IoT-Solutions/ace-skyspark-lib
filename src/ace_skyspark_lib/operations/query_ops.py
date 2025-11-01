@@ -137,3 +137,30 @@ class QueryOperations:
         """
         rows = await self.read_points(site_ref=site_ref, equip_ref=equip_ref)
         return [Point.from_zinc_dict(row) for row in rows]
+
+    async def get_project_timezone(self) -> str:
+        """Get the project's default timezone.
+
+        Returns:
+            Timezone string (e.g., "New_York", "Chicago")
+
+        Raises:
+            ValueError: If timezone cannot be determined
+        """
+        logger.info("get_project_timezone")
+
+        # Query the about endpoint to get project info
+        response = await self.session.get_json("about")
+
+        # Extract timezone from response
+        tz = response.get("tz")
+        if isinstance(tz, dict):
+            tz = tz.get("val") or tz.get("name")
+
+        if not tz:
+            msg = "Could not determine project timezone from SkySpark"
+            logger.error("project_timezone_not_found", response=response)
+            raise ValueError(msg)
+
+        logger.info("project_timezone_found", tz=tz)
+        return str(tz)
