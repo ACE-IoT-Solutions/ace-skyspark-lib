@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2025-11-01
+
+### Added
+- Equipment update operations with `update_equipment()` method
+  - Added to both `EntityOperations` and `SkysparkClient`
+  - Includes validation that equipment have IDs before updating
+  - Uses `encode_commit_update_equipment()` for proper Zinc serialization
+- New `get_project_timezone()` method to retrieve project default timezone
+- Dict datetime format handling in `ZincEncoder._encode_value()`
+  - Handles SkySpark DateTime dict format: `{"_kind": "dateTime", "val": "...", "tz": "..."}`
+
+### Changed
+- **Relaxed timezone validation for SkySpark compatibility**
+  - Now accepts any non-empty string instead of strict IANA timezone validation
+  - Allows SkySpark-specific timezone names that may differ from pytz database
+  - Updated validators in Site, Equipment, and Point models
+  - Updated test suite to reflect new validation behavior
+
+### Fixed
+- Empty string keys no longer added to Zinc grid headers
+  - Added filtering: `valid_keys = {k for k in zinc_dict.keys() if k and k.strip()}`
+  - Prevents malformed Zinc grids with empty column names
+
 ## [0.1.3] - 2025-10-31
 
 ### Fixed

@@ -58,9 +58,9 @@ class TestSite:
         assert site.tags == {"custom": "value"}
 
     def test_site_validates_timezone(self) -> None:
-        """Test that invalid timezones are rejected."""
-        with pytest.raises(ValidationError, match="Invalid timezone"):
-            Site(dis="Building 1", refName="building1", tz="Invalid/Timezone")
+        """Test that empty timezones are rejected."""
+        with pytest.raises(ValidationError, match="Timezone cannot be empty"):
+            Site(dis="Building 1", refName="building1", tz="")
 
     def test_site_accepts_valid_timezones(self) -> None:
         """Test various valid timezones."""
@@ -140,12 +140,12 @@ class TestEquipment:
 
     def test_equipment_validates_timezone(self) -> None:
         """Test timezone validation."""
-        with pytest.raises(ValidationError, match="Invalid timezone"):
+        with pytest.raises(ValidationError, match="Timezone cannot be empty"):
             Equipment(
                 dis="AHU-1",
                 refName="ahu1",
                 siteRef="site123",
-                tz="Bad/Timezone",
+                tz="",
             )
 
     def test_equipment_to_zinc_dict(self) -> None:
@@ -252,14 +252,14 @@ class TestPoint:
 
     def test_point_validates_timezone(self) -> None:
         """Test timezone validation."""
-        with pytest.raises(ValidationError, match="Invalid timezone"):
+        with pytest.raises(ValidationError, match="Timezone cannot be empty"):
             Point(
                 dis="Test",
                 refName="test",
                 siteRef="site123",
                 equipRef="ahu1",
                 kind="Number",
-                tz="Bad/Timezone",
+                tz="",
                 markerTags=["sensor"],
             )
 
