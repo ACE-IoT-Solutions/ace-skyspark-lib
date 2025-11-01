@@ -63,8 +63,12 @@ class ZincEncoder:
         # Collect all unique tags
         all_tags = {"dis", "tz", "refName", "site"}
         for site in sites:
-            all_tags.update(site.to_zinc_dict().keys())
+            zinc_dict = site.to_zinc_dict()
+            # Filter out empty string keys
+            valid_keys = {k for k in zinc_dict.keys() if k and k.strip()}
+            all_tags.update(valid_keys)
         all_tags.discard("id")  # Don't include id in add operations
+        all_tags.discard("")  # Remove empty strings
 
         # Header row
         grid += ", ".join(sorted(all_tags)) + "\n"
@@ -98,8 +102,12 @@ class ZincEncoder:
         # Collect all unique tags
         all_tags = {"dis", "siteRef", "tz", "refName", "equip"}
         for equip in equipment:
-            all_tags.update(equip.to_zinc_dict().keys())
+            zinc_dict = equip.to_zinc_dict()
+            # Filter out empty string keys
+            valid_keys = {k for k in zinc_dict.keys() if k and k.strip()}
+            all_tags.update(valid_keys)
         all_tags.discard("id")
+        all_tags.discard("")  # Remove empty strings
 
         # Header row
         grid += ", ".join(sorted(all_tags)) + "\n"
@@ -133,8 +141,13 @@ class ZincEncoder:
         # Collect all unique tags
         all_tags = {"dis", "siteRef", "equipRef", "kind", "tz", "refName", "point"}
         for point in points:
-            all_tags.update(point.to_zinc_dict().keys())
+            zinc_dict = point.to_zinc_dict()
+            # Filter out empty string keys before adding to all_tags
+            valid_keys = {k for k in zinc_dict.keys() if k and k.strip()}
+            all_tags.update(valid_keys)
         all_tags.discard("id")
+        # Remove any empty strings that might have slipped through
+        all_tags.discard("")
 
         # Header row
         grid += ", ".join(sorted(all_tags)) + "\n"
@@ -168,7 +181,11 @@ class ZincEncoder:
         # Collect all unique tags (including id and mod for updates)
         all_tags = {"id", "dis", "siteRef", "tz", "refName", "equip"}
         for equip in equipment:
-            all_tags.update(equip.to_zinc_dict().keys())
+            zinc_dict = equip.to_zinc_dict()
+            # Filter out empty string keys
+            valid_keys = {k for k in zinc_dict.keys() if k and k.strip()}
+            all_tags.update(valid_keys)
+        all_tags.discard("")  # Remove empty strings
 
         # Header row
         grid += ", ".join(sorted(all_tags)) + "\n"
@@ -206,7 +223,12 @@ class ZincEncoder:
         # Collect all unique tags (including id for updates)
         all_tags = {"id", "dis", "siteRef", "equipRef", "kind", "tz", "refName", "point"}
         for point in points:
-            all_tags.update(point.to_zinc_dict().keys())
+            zinc_dict = point.to_zinc_dict()
+            # Filter out empty string keys before adding to all_tags
+            valid_keys = {k for k in zinc_dict.keys() if k and k.strip()}
+            all_tags.update(valid_keys)
+        # Remove any empty strings that might have slipped through
+        all_tags.discard("")
 
         # Header row
         grid += ", ".join(sorted(all_tags)) + "\n"
