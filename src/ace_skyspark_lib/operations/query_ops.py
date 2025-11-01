@@ -142,7 +142,7 @@ class QueryOperations:
         """Get the project's default timezone.
 
         Returns:
-            Timezone string (e.g., "New_York", "Chicago")
+            Timezone string (e.g., "New_York", "Chicago", "UTC")
 
         Raises:
             ValueError: If timezone cannot be determined
@@ -152,10 +152,19 @@ class QueryOperations:
         # Query the about endpoint to get project info
         response = await self.session.get_json("about")
 
-        # Extract timezone from response
-        tz = response.get("tz")
+        # Extract timezone from response (it's in the rows array)
+        rows = response.get("rows", [])
+        if not rows:
+            msg = "Could not determine project timezone from SkySpark (no rows in about response)"
+            logger.error("project_timezone_not_found", response=response)
+            raise ValueError(msg)
+
+        # Get timezone from first row
+        tz = rows[0].get("tz")
         if isinstance(tz, dict):
-            tz = tz.get("val") or tz.get("name")
+            # Handle SkySpark datetime dict format: {"_kind": "dateTime", "val": "...", "tz": "UTC"}
+            # In this case, tz is just a string like "UTC"
+            tz = tz.get("val") or tz.get("tz")
 
         if not tz:
             msg = "Could not determine project timezone from SkySpark"
