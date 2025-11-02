@@ -2,6 +2,24 @@
 
 This guide explains how to publish `ace-skyspark-lib` to PyPI.
 
+## 🚀 Recommended: Automated Publishing with GitHub Actions
+
+**This is the preferred method!** The project uses GitHub Actions with PyPI Trusted Publishing for secure, automated releases.
+
+See **[.github/PYPI_SETUP.md](.github/PYPI_SETUP.md)** for complete setup instructions.
+
+**Quick Summary:**
+1. Set up Trusted Publishing on PyPI (one-time)
+2. Update version in `pyproject.toml` and `CHANGELOG.md`
+3. Create a GitHub Release with tag `v0.1.x`
+4. GitHub Actions automatically tests, builds, and publishes to PyPI
+
+---
+
+## Manual Publishing (Alternative)
+
+If you need to publish manually (not recommended for production), follow these instructions.
+
 ## Prerequisites
 
 1. **PyPI Account**: Create an account at https://pypi.org/account/register/
