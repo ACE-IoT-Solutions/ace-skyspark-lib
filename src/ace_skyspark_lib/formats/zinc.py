@@ -26,20 +26,18 @@ def _escape_zinc_string(s: str) -> str:
         - Removes control characters that can cause terminal/parser issues
     """
     # Escape in this order to avoid double-escaping
-    s = s.replace('\\', '\\\\')  # Backslash MUST be first!
-    s = s.replace('"', '\\"')    # Double quotes
-    s = s.replace('\n', '\\n')   # Newline
-    s = s.replace('\r', '\\r')   # Carriage return
-    s = s.replace('\t', '\\t')   # Tab
+    s = s.replace("\\", "\\\\")  # Backslash MUST be first!
+    s = s.replace('"', '\\"')  # Double quotes
+    s = s.replace("\n", "\\n")  # Newline
+    s = s.replace("\r", "\\r")  # Carriage return
+    s = s.replace("\t", "\\t")  # Tab
 
     # Remove null bytes (can truncate strings in C-based parsers)
-    s = s.replace('\x00', '')
+    s = s.replace("\x00", "")
 
     # Remove control characters (except tab, newline, carriage return which we've already escaped)
     # Control characters are 0x00-0x1F except \t(0x09), \n(0x0A), \r(0x0D)
-    s = ''.join(c for c in s if ord(c) >= 32 or c in '\t\n\r')
-
-    return s
+    return "".join(c for c in s if ord(c) >= 32 or c in "\t\n\r")
 
 
 class ZincEncoder:
@@ -65,7 +63,7 @@ class ZincEncoder:
         for site in sites:
             zinc_dict = site.to_zinc_dict()
             # Filter out empty string keys
-            valid_keys = {k for k in zinc_dict.keys() if k and k.strip()}
+            valid_keys = {k for k in zinc_dict if k and k.strip()}
             all_tags.update(valid_keys)
         all_tags.discard("id")  # Don't include id in add operations
         all_tags.discard("")  # Remove empty strings
@@ -104,7 +102,7 @@ class ZincEncoder:
         for equip in equipment:
             zinc_dict = equip.to_zinc_dict()
             # Filter out empty string keys
-            valid_keys = {k for k in zinc_dict.keys() if k and k.strip()}
+            valid_keys = {k for k in zinc_dict if k and k.strip()}
             all_tags.update(valid_keys)
         all_tags.discard("id")
         all_tags.discard("")  # Remove empty strings
@@ -143,7 +141,7 @@ class ZincEncoder:
         for point in points:
             zinc_dict = point.to_zinc_dict()
             # Filter out empty string keys before adding to all_tags
-            valid_keys = {k for k in zinc_dict.keys() if k and k.strip()}
+            valid_keys = {k for k in zinc_dict if k and k.strip()}
             all_tags.update(valid_keys)
         all_tags.discard("id")
         # Remove any empty strings that might have slipped through
@@ -183,7 +181,7 @@ class ZincEncoder:
         for equip in equipment:
             zinc_dict = equip.to_zinc_dict()
             # Filter out empty string keys
-            valid_keys = {k for k in zinc_dict.keys() if k and k.strip()}
+            valid_keys = {k for k in zinc_dict if k and k.strip()}
             all_tags.update(valid_keys)
         all_tags.discard("")  # Remove empty strings
 
@@ -225,7 +223,7 @@ class ZincEncoder:
         for point in points:
             zinc_dict = point.to_zinc_dict()
             # Filter out empty string keys before adding to all_tags
-            valid_keys = {k for k in zinc_dict.keys() if k and k.strip()}
+            valid_keys = {k for k in zinc_dict if k and k.strip()}
             all_tags.update(valid_keys)
         # Remove any empty strings that might have slipped through
         all_tags.discard("")
@@ -282,9 +280,11 @@ class ZincEncoder:
                 val_str = str(sample.value)
 
             # Build hisWrite expression
+            ts_iso = sample.timestamp.isoformat()
             expr = (
                 f'"hisWrite('
-                f'{{ts: parseDateTime(\\"{sample.timestamp.isoformat()}\\", \\"YYYY-MM-DDThh:mm:ssz\\", \\"{tz_name}\\"), '
+                f'{{ts: parseDateTime(\\"{ts_iso}\\", '
+                f'\\"YYYY-MM-DDThh:mm:ssz\\", \\"{tz_name}\\"), '
                 f"val: {val_str}}}, "
                 f'@{sample.point_id})"\n'
             )

@@ -219,7 +219,7 @@ class EntityOperations:
         entity = rows[0]
         mod_field = entity.get("mod", "")
 
-        # Extract mod timestamp - it comes as a dict {"_kind": "dateTime", "val": "...", "tz": "..."}
+        # Extract mod timestamp from dict: {"_kind": "dateTime", "val": "...", "tz": "..."}
         if isinstance(mod_field, dict):
             mod_val = mod_field.get("val", "")
             mod_tz = mod_field.get("tz", "UTC")

@@ -159,7 +159,11 @@ class QueryOperations:
             if project_entities:
                 proj_tz = project_entities[0].get("tz")
                 if proj_tz:
-                    logger.info("project_timezone_found_from_entity", tz=proj_tz, source="project_entity")
+                    logger.info(
+                        "project_timezone_found_from_entity",
+                        tz=proj_tz,
+                        source="project_entity",
+                    )
                     return str(proj_tz)
                 logger.debug("project_entity_found_but_no_tz", entity=project_entities[0])
         except Exception as e:

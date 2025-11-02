@@ -86,11 +86,12 @@ class RetryPolicy:
             True if exception should trigger retry
         """
         # Network errors and timeouts
-        if isinstance(exception, (httpx.RequestError, httpx.TimeoutException, asyncio.TimeoutError)):
+        network_errors = (httpx.RequestError, httpx.TimeoutException, asyncio.TimeoutError)
+        if isinstance(exception, network_errors):
             return True
 
         # Server errors (5xx)
-        if isinstance(exception, httpx.HTTPStatusError) and 500 <= exception.response.status_code < 600:
-            return True
-
+        if isinstance(exception, httpx.HTTPStatusError):
+            status = exception.response.status_code
+            return 500 <= status < 600
         return False

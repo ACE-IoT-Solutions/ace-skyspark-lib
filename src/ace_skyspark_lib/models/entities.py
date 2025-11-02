@@ -5,7 +5,14 @@ from typing import Any
 
 import pytz
 from dateutil import parser as date_parser
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 
 def _parse_zinc_datetime(value: dict[str, Any]) -> datetime:
@@ -65,9 +72,9 @@ class Site(BaseModel):
     """Haystack Site entity with Pydantic serialization/validation."""
 
     model_config = ConfigDict(
-        populate_by_name=True,       # Allow both 'ref_name' and 'refName'
-        validate_assignment=True,     # Validate on field updates
-        str_strip_whitespace=True,    # Auto-clean strings
+        populate_by_name=True,  # Allow both 'ref_name' and 'refName'
+        validate_assignment=True,  # Validate on field updates
+        str_strip_whitespace=True,  # Auto-clean strings
     )
 
     id: str | None = Field(None, description="Unique identifier")
@@ -81,7 +88,7 @@ class Site(BaseModel):
 
     # FIELD VALIDATORS
 
-    @field_validator('id', mode='before')
+    @field_validator("id", mode="before")
     @classmethod
     def parse_zinc_ref(cls, v: Any) -> str | None:
         """Parse Zinc ref: {"val": "p:demo:r:123"} or "@p:demo:r:123" → "p:demo:r:123"."""
@@ -137,16 +144,16 @@ class Site(BaseModel):
 
         Backwards-compatible wrapper around Pydantic model_dump().
         """
-        return self.model_dump(mode='python')
+        return self.model_dump(mode="python")
 
 
 class Equipment(BaseModel):
     """Haystack Equipment entity with Pydantic serialization/validation."""
 
     model_config = ConfigDict(
-        populate_by_name=True,       # Allow both 'ref_name' and 'refName'
-        validate_assignment=True,     # Validate on field updates
-        str_strip_whitespace=True,    # Auto-clean strings
+        populate_by_name=True,  # Allow both 'ref_name' and 'refName'
+        validate_assignment=True,  # Validate on field updates
+        str_strip_whitespace=True,  # Auto-clean strings
     )
 
     id: str | None = Field(None, description="Unique identifier")
@@ -159,7 +166,7 @@ class Equipment(BaseModel):
 
     # FIELD VALIDATORS
 
-    @field_validator('id', 'site_ref', 'equip_ref', mode='before')
+    @field_validator("id", "site_ref", "equip_ref", mode="before")
     @classmethod
     def parse_zinc_ref(cls, v: Any) -> str | None:
         """Parse Zinc ref: {"val": "p:demo:r:123"} or "@p:demo:r:123" → "p:demo:r:123"."""
@@ -212,16 +219,16 @@ class Equipment(BaseModel):
 
         Backwards-compatible wrapper around Pydantic model_dump().
         """
-        return self.model_dump(mode='python')
+        return self.model_dump(mode="python")
 
 
 class Point(BaseModel):
     """Haystack Point entity with Pydantic serialization/validation."""
 
     model_config = ConfigDict(
-        populate_by_name=True,       # Allow both 'ref_name' and 'refName'
-        validate_assignment=True,     # Validate on field updates
-        str_strip_whitespace=True,    # Auto-clean strings
+        populate_by_name=True,  # Allow both 'ref_name' and 'refName'
+        validate_assignment=True,  # Validate on field updates
+        str_strip_whitespace=True,  # Auto-clean strings
     )
 
     id: str | None = Field(None, description="Unique identifier")
@@ -244,7 +251,7 @@ class Point(BaseModel):
 
     # FIELD VALIDATORS - Parse Zinc format to Python types
 
-    @field_validator('id', 'site_ref', 'equip_ref', mode='before')
+    @field_validator("id", "site_ref", "equip_ref", mode="before")
     @classmethod
     def parse_zinc_ref(cls, v: Any) -> str | None:
         """Parse Zinc ref: {"val": "p:demo:r:123"} or "@p:demo:r:123" → "p:demo:r:123"."""
@@ -256,7 +263,7 @@ class Point(BaseModel):
             return v.lstrip("@")
         return v
 
-    @field_validator('his', 'cur', 'writable', mode='before')
+    @field_validator("his", "cur", "writable", mode="before")
     @classmethod
     def parse_zinc_marker(cls, v: Any) -> bool:
         """Parse Zinc marker: "m:" or {"_kind": "marker"} → True."""
@@ -288,7 +295,7 @@ class Point(BaseModel):
 
     # MODEL VALIDATORS - Extract fields from Zinc dict
 
-    @model_validator(mode='before')
+    @model_validator(mode="before")
     @classmethod
     def extract_from_zinc_dict(cls, data: Any) -> dict[str, Any]:
         """Extract Point fields from raw Zinc response.
@@ -301,8 +308,18 @@ class Point(BaseModel):
 
         # Known system fields (mod is intentionally not here - it goes in kv_tags)
         known_fields = {
-            "id", "dis", "refName", "siteRef", "equipRef",
-            "kind", "tz", "unit", "point", "his", "cur", "writable"
+            "id",
+            "dis",
+            "refName",
+            "siteRef",
+            "equipRef",
+            "kind",
+            "tz",
+            "unit",
+            "point",
+            "his",
+            "cur",
+            "writable",
         }
 
         # Check if this looks like already-processed data (has markerTags/kvTags keys)
@@ -409,7 +426,7 @@ class Point(BaseModel):
         Backwards-compatible wrapper around Pydantic model_dump().
         Uses the serialize_to_zinc model_serializer defined above.
         """
-        return self.model_dump(mode='python')
+        return self.model_dump(mode="python")
 
     @classmethod
     def from_zinc_dict(cls, data: dict[str, Any]) -> "Point":
