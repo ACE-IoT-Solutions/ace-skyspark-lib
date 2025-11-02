@@ -7,18 +7,23 @@ license = { text = "MIT" }
 authors = [
     { name = "Andrew Rodgers", email = "andrew@aceiotsolutions.com" }
 ]
+maintainers = [
+    { name = "Andrew Rodgers", email = "andrew@aceiotsolutions.com" }
+]
 keywords = ["skyspark", "haystack", "iot", "building", "automation", "bms", "async"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Framework :: AsyncIO",
     "Topic :: Home Automation",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "aceiot-models>=0.3.4",
     "pydantic>=2.12.3",
@@ -29,6 +34,12 @@ dependencies = [
     "tenacity>=8.5.0",
     "structlog>=24.1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ACE-IoT-Solutions/ace-skyspark-lib"
+Repository = "https://github.com/ACE-IoT-Solutions/ace-skyspark-lib"
+Issues = "https://github.com/ACE-IoT-Solutions/ace-skyspark-lib/issues"
+Changelog = "https://github.com/ACE-IoT-Solutions/ace-skyspark-lib/blob/main/CHANGELOG.md"
 
 [project.scripts]
 ace-skyspark-lib = "ace_skyspark_lib:main"
@@ -51,7 +62,7 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "ANN", "ASYNC", "S", "B", "A", "C4", "DTZ", "RET", "SIM", "ARG", "PTH", "PL", "RUF"]
