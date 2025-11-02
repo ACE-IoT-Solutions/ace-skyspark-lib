@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2025-11-02
+
+### Added
+- **GitHub Actions CI/CD workflows for automated publishing**
+  - CI workflow runs tests on Python 3.11, 3.12, 3.13 for all PRs and pushes
+  - Publishing workflow automatically publishes to PyPI on GitHub releases
+  - Uses PyPI Trusted Publishing (OIDC) for secure, token-free authentication
+  - TestPyPI publishing for testing releases
+  - Manual workflow dispatch for on-demand publishing
+- Complete PyPI Trusted Publishing setup documentation (`.github/PYPI_SETUP.md`)
+- Workflow overview and quick start guide (`.github/README.md`)
+- Updated `PUBLISHING.md` to recommend GitHub Actions
+
+### Changed
+- Publishing is now fully automated through GitHub releases
+- Expanded Python version support in classifiers (3.11, 3.12, 3.13)
+- Project metadata enhanced with maintainers and project URLs
+- Updated ruff target version to py311 for broader compatibility
+
 ## [0.1.6] - 2025-11-01
 
 ### Changed
