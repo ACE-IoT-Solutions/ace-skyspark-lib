@@ -58,7 +58,7 @@ class SessionManager:
 
         async def _post() -> dict[str, Any]:
             url = self._build_url(endpoint)
-            headers = self._get_headers("text/zinc")
+            headers = await self._get_headers("text/zinc")
 
             logger.debug(
                 "post_zinc",
@@ -66,7 +66,6 @@ class SessionManager:
                 zinc_size=len(zinc_data),
                 has_auth=bool(headers.get("Authorization")),
                 auth_header=headers.get("Authorization", "")[:30],
-                all_headers=str(headers),
             )
 
             response = await self.session.post(
@@ -76,17 +75,23 @@ class SessionManager:
                 follow_redirects=False,
             )
 
-            response_text = response.text
-
-            if response.status_code != 200:
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    logger.warning("auth_token_expired_or_invalid", status=401)
+                    self.token_provider.invalidate()
+                
+                response_text = response.text
                 logger.error(
                     "post_zinc_failed",
                     status=response.status_code,
                     response=response_text[:500],
                     response_headers=str(dict(response.headers)),
                 )
-                msg = f"Request failed with status {response.status_code}"
-                raise ServerError(msg)
+                raise e
+
+            response_text = response.text
 
             # Try to parse as JSON
             try:
@@ -118,20 +123,26 @@ class SessionManager:
 
         async def _get() -> dict[str, Any]:
             url = self._build_url(endpoint)
-            headers = self._get_headers("application/json")
+            headers = await self._get_headers("application/json")
 
             logger.debug("get_json", url=url, params=params)
 
             response = await self.session.get(url, params=params, headers=headers)
-            if response.status_code != 200:
+            
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    logger.warning("auth_token_expired_or_invalid", status=401)
+                    self.token_provider.invalidate()
+                
                 response_text = response.text
                 logger.error(
                     "get_json_failed",
                     status=response.status_code,
                     response=response_text[:500],
                 )
-                msg = f"Request failed with status {response.status_code}"
-                raise ServerError(msg)
+                raise e
 
             return response.json()
 
@@ -158,20 +169,26 @@ class SessionManager:
 
         async def _post() -> dict[str, Any]:
             url = self._build_url(endpoint)
-            headers = self._get_headers("application/json")
+            headers = await self._get_headers("application/json")
 
             logger.debug("post_json", url=url)
 
             response = await self.session.post(url, json=json_data, headers=headers)
-            if response.status_code != 200:
+            
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    logger.warning("auth_token_expired_or_invalid", status=401)
+                    self.token_provider.invalidate()
+                
                 response_text = response.text
                 logger.error(
                     "post_json_failed",
                     status=response.status_code,
                     response=response_text[:500],
                 )
-                msg = f"Request failed with status {response.status_code}"
-                raise ServerError(msg)
+                raise e
 
             return response.json()
 
@@ -189,7 +206,7 @@ class SessionManager:
         endpoint = endpoint.lstrip("/")
         return f"{self.base_url}/{self.project}/{endpoint}"
 
-    def _get_headers(self, content_type: str) -> dict[str, str]:
+    async def _get_headers(self, content_type: str) -> dict[str, str]:
         """Get headers with auth token.
 
         Args:
@@ -198,7 +215,7 @@ class SessionManager:
         Returns:
             Headers dictionary
         """
-        token = self.token_provider.get_cached_token()
+        token = await self.token_provider.get_token()
         logger.debug("get_headers", has_token=bool(token), token_len=len(token) if token else 0)
         headers = {
             "Content-Type": content_type,

@@ -92,7 +92,8 @@ async def test_integration_create_site() -> None:
             tz="America/New_York",
             refName="test_site_001",
             area=5000.0,
-            tags={"office": "m:", "testRun": "true"},
+            marker_tags=["office"],
+            kv_tags={"testRun": "true"},
         )
 
         created_sites = await client.create_sites([test_site])

@@ -34,7 +34,8 @@ class TestSite:
         assert site.ref_name == "building1"
         assert site.tz == "UTC"  # Default
         assert site.id is None
-        assert site.tags == {}
+        assert site.marker_tags == []
+        assert site.kv_tags == {}
 
     def test_create_full_site(self) -> None:
         """Test creating site with all fields."""
@@ -46,7 +47,7 @@ class TestSite:
             geoAddr="123 Main St, City, ST 12345",
             area=50000.0,
             yearBuilt=2010,
-            tags={"custom": "value"},
+            kv_tags={"custom": "value"},
         )
         assert site.id == "site123"
         assert site.dis == "Building 1"
@@ -55,7 +56,7 @@ class TestSite:
         assert site.geo_addr == "123 Main St, City, ST 12345"
         assert site.area == 50000.0
         assert site.year_built == 2010
-        assert site.tags == {"custom": "value"}
+        assert site.kv_tags == {"custom": "value"}
 
     def test_site_validates_timezone(self) -> None:
         """Test that empty timezones are rejected."""
@@ -99,7 +100,8 @@ class TestSite:
             geoAddr="123 Main St",
             area=50000.0,
             yearBuilt=2010,
-            tags={"custom": "value", "marker": "m:"},
+            marker_tags=["marker"],
+            kv_tags={"custom": "value"},
         )
         zinc = site.to_zinc_dict()
 
@@ -156,7 +158,8 @@ class TestEquipment:
             refName="ahu1",
             siteRef="site123",
             tz="America/New_York",
-            tags={"ahu": "m:", "custom": "value"},
+            marker_tags=["ahu"],
+            kv_tags={"custom": "value"},
         )
         zinc = equip.to_zinc_dict()
 

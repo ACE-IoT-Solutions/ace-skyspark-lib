@@ -1,5 +1,6 @@
 """Main SkySpark client class."""
 
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -9,7 +10,11 @@ from ace_skyspark_lib.auth.authenticator import ScramAuthenticator
 from ace_skyspark_lib.auth.token_manager import TokenManager
 from ace_skyspark_lib.http.session import SessionManager
 from ace_skyspark_lib.models.entities import Equipment, Point, Site
-from ace_skyspark_lib.models.history import HistorySample, HistoryWriteResult
+from ace_skyspark_lib.models.history import (
+    HistoryReadResponse,
+    HistorySample,
+    HistoryWriteResult,
+)
 from ace_skyspark_lib.operations.entity_ops import EntityOperations
 from ace_skyspark_lib.operations.history_ops import HistoryOperations
 from ace_skyspark_lib.operations.query_ops import QueryOperations
@@ -304,7 +309,77 @@ class SkysparkClient:
             raise RuntimeError(msg)
         await self._entities.delete_entity(entity_id)
 
+    async def delete_entities(self, entities: list[dict[str, Any]]) -> None:
+        """Delete multiple entities with optimistic locking.
+
+        Args:
+            entities: List of entity dictionaries, each MUST contain 'id' and 'mod'
+        """
+        if not self._entities:
+            msg = "Client not initialized. Use 'async with' context manager."
+            raise RuntimeError(msg)
+        await self._entities.delete_entities(entities)
+
     # History operations
+    async def read_history(
+        self,
+        point_id: str,
+        start_time: datetime,
+        end_time: datetime,
+        page: int = 1,
+        per_page: int = 1000,
+    ) -> HistoryReadResponse:
+        """Read history samples for a point using paginated endpoint.
+
+        Args:
+            point_id: Point ID (without @)
+            start_time: Start of range
+            end_time: End of range
+            page: Page number
+            per_page: Samples per page
+
+        Returns:
+            Paginated HistoryReadResponse
+        """
+        if not self._history:
+            msg = "Client not initialized. Use 'async with' context manager."
+            raise RuntimeError(msg)
+        return await self._history.read_history(
+            point_id=point_id,
+            start_time=start_time,
+            end_time=end_time,
+            page=page,
+            per_page=per_page,
+        )
+
+    async def read_history_all(
+        self,
+        point_id: str,
+        start_time: datetime,
+        end_time: datetime,
+        per_page: int = 5000,
+    ) -> list[HistorySample]:
+        """Read all history samples for a point across all pages.
+
+        Args:
+            point_id: Point ID
+            start_time: Start of range
+            end_time: End of range
+            per_page: Samples per page to use for each request
+
+        Returns:
+            Flattened list of all HistorySamples
+        """
+        if not self._history:
+            msg = "Client not initialized. Use 'async with' context manager."
+            raise RuntimeError(msg)
+        return await self._history.read_history_all(
+            point_id=point_id,
+            start_time=start_time,
+            end_time=end_time,
+            per_page=per_page,
+        )
+
     async def write_history(
         self,
         samples: list[HistorySample],

@@ -84,7 +84,12 @@ class Site(BaseModel):
     geo_addr: str | None = Field(None, description="Geographic address", alias="geoAddr")
     area: float | None = Field(None, description="Square footage")
     year_built: int | None = Field(None, description="Year of construction", alias="yearBuilt")
-    tags: dict[str, Any] = Field(default_factory=dict, description="Additional tags")
+    marker_tags: list[str] = Field(
+        default_factory=list, description="Marker tags", alias="markerTags"
+    )
+    kv_tags: dict[str, Any] = Field(
+        default_factory=dict, description="Key-value tags", alias="kvTags"
+    )
 
     # FIELD VALIDATORS
 
@@ -103,15 +108,54 @@ class Site(BaseModel):
     @field_validator("tz")
     @classmethod
     def validate_timezone(cls, v: str) -> str:
-        """Validate timezone format.
-
-        Note: SkySpark may use timezone names that differ from IANA database.
-        We accept any non-empty string to support SkySpark-specific formats.
-        """
+        """Validate timezone format."""
         if not v or not v.strip():
             msg = "Timezone cannot be empty"
             raise ValueError(msg)
         return v
+
+    # MODEL VALIDATORS
+
+    @model_validator(mode="before")
+    @classmethod
+    def extract_from_zinc_dict(cls, data: Any) -> dict[str, Any]:
+        """Extract Site fields from raw Zinc response."""
+        if not isinstance(data, dict):
+            return data
+
+        known_fields = {
+            "id",
+            "dis",
+            "refName",
+            "tz",
+            "geoAddr",
+            "area",
+            "yearBuilt",
+            "site",
+        }
+
+        # Check if already processed
+        if "markerTags" in data or "marker_tags" in data or "kvTags" in data or "kv_tags" in data:
+            return data
+
+        marker_tags = []
+        kv_tags = {}
+
+        for key, value in data.items():
+            if key in known_fields:
+                continue
+
+            if value == "m:" or (isinstance(value, dict) and value.get("_kind") == "marker"):
+                marker_tags.append(key)
+            else:
+                if isinstance(value, dict) and "val" in value:
+                    value = _parse_zinc_datetime(value)
+                kv_tags[key] = value
+
+        result = dict(data)
+        result["markerTags"] = marker_tags
+        result["kvTags"] = kv_tags
+        return result
 
     # MODEL SERIALIZER
 
@@ -134,16 +178,17 @@ class Site(BaseModel):
         if self.year_built:
             data["yearBuilt"] = self.year_built
 
+        # Add markers
+        for tag in self.marker_tags:
+            data[tag] = "m:"
+        
         # Add custom tags
-        data.update(self.tags)
+        data.update(self.kv_tags)
 
         return data
 
     def to_zinc_dict(self) -> dict[str, Any]:
-        """Convert to Zinc-compatible dictionary.
-
-        Backwards-compatible wrapper around Pydantic model_dump().
-        """
+        """Convert to Zinc-compatible dictionary."""
         return self.model_dump(mode="python")
 
 
@@ -162,7 +207,12 @@ class Equipment(BaseModel):
     site_ref: str = Field(..., description="Parent site reference", alias="siteRef")
     equip_ref: str | None = Field(None, description="Parent equipment ref", alias="equipRef")
     tz: str = Field("UTC", description="Timezone")
-    tags: dict[str, Any] = Field(default_factory=dict, description="Additional tags")
+    marker_tags: list[str] = Field(
+        default_factory=list, description="Marker tags", alias="markerTags"
+    )
+    kv_tags: dict[str, Any] = Field(
+        default_factory=dict, description="Key-value tags", alias="kvTags"
+    )
 
     # FIELD VALIDATORS
 
@@ -181,15 +231,53 @@ class Equipment(BaseModel):
     @field_validator("tz")
     @classmethod
     def validate_timezone(cls, v: str) -> str:
-        """Validate timezone format.
-
-        Note: SkySpark may use timezone names that differ from IANA database.
-        We accept any non-empty string to support SkySpark-specific formats.
-        """
+        """Validate timezone format."""
         if not v or not v.strip():
             msg = "Timezone cannot be empty"
             raise ValueError(msg)
         return v
+
+    # MODEL VALIDATORS
+
+    @model_validator(mode="before")
+    @classmethod
+    def extract_from_zinc_dict(cls, data: Any) -> dict[str, Any]:
+        """Extract Equipment fields from raw Zinc response."""
+        if not isinstance(data, dict):
+            return data
+
+        known_fields = {
+            "id",
+            "dis",
+            "refName",
+            "siteRef",
+            "equipRef",
+            "tz",
+            "equip",
+        }
+
+        # Check if already processed
+        if "markerTags" in data or "marker_tags" in data or "kvTags" in data or "kv_tags" in data:
+            return data
+
+        marker_tags = []
+        kv_tags = {}
+
+        for key, value in data.items():
+            if key in known_fields:
+                continue
+
+            if value == "m:" or (isinstance(value, dict) and value.get("_kind") == "marker"):
+                marker_tags.append(key)
+            else:
+                if isinstance(value, dict) and "val" in value:
+                    value = _parse_zinc_datetime(value)
+                kv_tags[key] = value
+
+        result = dict(data)
+        result["markerTags"] = marker_tags
+        result["kvTags"] = kv_tags
+        return result
 
     # MODEL SERIALIZER
 
@@ -209,16 +297,17 @@ class Equipment(BaseModel):
         if self.equip_ref:
             data["equipRef"] = f"@{self.equip_ref}"
 
+        # Add markers
+        for tag in self.marker_tags:
+            data[tag] = "m:"
+
         # Add custom tags
-        data.update(self.tags)
+        data.update(self.kv_tags)
 
         return data
 
     def to_zinc_dict(self) -> dict[str, Any]:
-        """Convert to Zinc-compatible dictionary.
-
-        Backwards-compatible wrapper around Pydantic model_dump().
-        """
+        """Convert to Zinc-compatible dictionary."""
         return self.model_dump(mode="python")
 
 

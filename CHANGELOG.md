@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-05-19
+
+### Added
+- **Paginated History Reading**
+  - Added `read_history()` for paginated history retrieval from the new `/timeseries` endpoint.
+  - Added `read_history_all()` to automatically fetch all history samples across all pages.
+  - Added `HistoryReadResponse` model for structured paginated responses.
+- **Bulk Entity Deletion with Optimistic Locking**
+  - Added `delete_entities()` to support efficient multi-entity removal.
+  - Implemented mandatory `mod` tag checking for bulk deletes to ensure data consistency.
+- **Improved Model Consistency**
+  - Refactored `Site` and `Equipment` models to use the same `marker_tags` and `kv_tags` pattern as the `Point` model.
+  - Enhanced automatic extraction of markers and key-value tags from flat Zinc dictionaries for all entity types.
+
+### Changed
+- **Robust HTTP & Authentication**
+  - Updated `RetryPolicy` to include `401 Unauthorized` as a retryable error.
+  - Enhanced `SessionManager` to automatically invalidate tokens on `401` and refresh them on the next retry attempt.
+  - Switched to `response.raise_for_status()` for better visibility of server-side errors.
+  - Made internal header generation asynchronous to ensure fresh tokens are fetched before every request.
+- **Documentation & Metadata**
+  - Synchronized versions across `pyproject.toml` and `__init__.py`.
+  - Updated `README.md` with accurate field names and new feature examples.
+  - Enhanced integration tests with history read-back verification.
+
 ## [0.1.8] - 2025-11-02
 
 ### Fixed

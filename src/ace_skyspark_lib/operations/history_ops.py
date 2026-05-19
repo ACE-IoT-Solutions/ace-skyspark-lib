@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Generator
+from datetime import datetime
 from itertools import islice
 
 import structlog
@@ -9,7 +10,11 @@ import structlog
 from ace_skyspark_lib.exceptions import HistoryWriteError
 from ace_skyspark_lib.formats.zinc import ZincEncoder
 from ace_skyspark_lib.http.session import SessionManager
-from ace_skyspark_lib.models.history import HistorySample, HistoryWriteResult
+from ace_skyspark_lib.models.history import (
+    HistoryReadResponse,
+    HistorySample,
+    HistoryWriteResult,
+)
 
 logger = structlog.get_logger()
 
@@ -24,6 +29,100 @@ class HistoryOperations:
             session_manager: HTTP session manager
         """
         self.session = session_manager
+
+    async def read_history(
+        self,
+        point_id: str,
+        start_time: datetime,
+        end_time: datetime,
+        page: int = 1,
+        per_page: int = 1000,
+    ) -> HistoryReadResponse:
+        """Read history samples for a point using paginated endpoint.
+
+        Args:
+            point_id: Point ID (without @)
+            start_time: Start of range
+            end_time: End of range
+            page: Page number
+            per_page: Samples per page
+
+        Returns:
+            Paginated HistoryReadResponse
+        """
+        logger.info(
+            "read_history",
+            point_id=point_id,
+            start=start_time.isoformat(),
+            end=end_time.isoformat(),
+            page=page,
+            per_page=per_page,
+        )
+
+        params = {
+            "id": f"@{point_id}",
+            "start": start_time.isoformat(),
+            "end": end_time.isoformat(),
+            "page": page,
+            "per_page": per_page,
+        }
+
+        response = await self.session.get_json("timeseries", params=params)
+
+        # Standard ACE PaginatedResponse format
+        # {
+        #   "page": 1,
+        #   "pages": 10,
+        #   "per_page": 1000,
+        #   "total": 10000,
+        #   "items": [{"pointId": "...", "timestamp": "...", "value": ...}, ...]
+        # }
+        return HistoryReadResponse.model_validate(response)
+
+    async def read_history_all(
+        self,
+        point_id: str,
+        start_time: datetime,
+        end_time: datetime,
+        per_page: int = 5000,
+    ) -> list[HistorySample]:
+        """Read all history samples for a point across all pages.
+
+        Args:
+            point_id: Point ID
+            start_time: Start of range
+            end_time: End of range
+            per_page: Samples per page to use for each request
+
+        Returns:
+            Flattened list of all HistorySamples
+        """
+        all_samples: list[HistorySample] = []
+        current_page = 1
+
+        while True:
+            response = await self.read_history(
+                point_id=point_id,
+                start_time=start_time,
+                end_time=end_time,
+                page=current_page,
+                per_page=per_page,
+            )
+
+            all_samples.extend(response.items)
+
+            if current_page >= response.pages:
+                break
+
+            current_page += 1
+
+        logger.info(
+            "read_history_all_complete",
+            point_id=point_id,
+            total_samples=len(all_samples),
+            pages=current_page,
+        )
+        return all_samples
 
     async def write_samples(
         self,

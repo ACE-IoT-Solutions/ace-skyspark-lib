@@ -57,14 +57,16 @@ class TestZincEncoderSites:
         assert "yearBuilt" in zinc
         assert "50000" in zinc
         assert "2010" in zinc
-
     def test_encode_site_with_custom_tags(self) -> None:
         """Test encoding site with custom tags."""
         site = Site(
             dis="Building 1",
             refName="building1",
-            tags={"custom": "value", "marker": "m:"},
+            tz="America/New_York",
+            marker_tags=["marker"],
+            kv_tags={"custom": "value"},
         )
+
         zinc = ZincEncoder.encode_commit_add_sites([site])
 
         assert "custom" in zinc

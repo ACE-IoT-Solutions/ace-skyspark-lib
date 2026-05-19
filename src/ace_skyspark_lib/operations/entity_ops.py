@@ -246,24 +246,48 @@ class EntityOperations:
 
         logger.info("delete_entity_complete", entity_id=entity_id)
 
-    async def delete_entities(self, entity_ids: list[str]) -> None:
-        """Delete multiple entities by ID.
+    async def delete_entities(self, entities: list[dict[str, Any]]) -> None:
+        """Delete multiple entities with optimistic locking.
 
         Args:
-            entity_ids: List of entity IDs to delete
+            entities: List of entity dictionaries, each MUST contain 'id' and 'mod'
 
         Raises:
             CommitError: If delete operation fails
+            ValueError: If any entity is missing required fields
         """
-        if not entity_ids:
+        if not entities:
             return
 
-        logger.info("delete_entities", count=len(entity_ids))
+        logger.info("delete_entities", count=len(entities))
 
+        # Build delete grid with id and mod columns
         zinc_grid = 'ver:"3.0" commit:"remove"\n'
-        zinc_grid += "id\n"
-        for entity_id in entity_ids:
-            zinc_grid += f"@{entity_id}\n"
+        zinc_grid += "id, mod\n"
+
+        for entity in entities:
+            entity_id = entity.get("id")
+            mod = entity.get("mod")
+
+            if not entity_id or not mod:
+                msg = f"Entity {entity} missing 'id' or 'mod' for bulk delete"
+                raise ValueError(msg)
+
+            # Clean up ID
+            if isinstance(entity_id, dict):
+                entity_id = entity_id.get("val", "").lstrip("@")
+            else:
+                entity_id = str(entity_id).lstrip("@")
+
+            # Clean up mod
+            if isinstance(mod, dict):
+                mod_val = mod.get("val", "")
+                mod_tz = mod.get("tz", "UTC")
+                mod_timestamp = f"{mod_val} {mod_tz}"
+            else:
+                mod_timestamp = str(mod)
+
+            zinc_grid += f"@{entity_id}, {mod_timestamp}\n"
 
         response = await self.session.post_zinc("commit", zinc_grid)
 
@@ -272,4 +296,4 @@ class EntityOperations:
             logger.error("delete_entities_failed", error=error_msg)
             raise CommitError(error_msg)
 
-        logger.info("delete_entities_complete", count=len(entity_ids))
+        logger.info("delete_entities_complete", count=len(entities))

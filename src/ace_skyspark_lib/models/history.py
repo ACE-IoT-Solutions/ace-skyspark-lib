@@ -1,9 +1,12 @@
 """Pydantic models for history operations."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, TypeVar
 
+from aceiot_models.common import PaginatedResponse
 from pydantic import BaseModel, Field, field_validator
+
+T = TypeVar("T")
 
 
 class HistorySample(BaseModel):
@@ -30,6 +33,10 @@ class HistorySample(BaseModel):
             "ts": self.timestamp.isoformat(),
             "val": self.value,
         }
+
+
+class HistoryReadResponse(PaginatedResponse[HistorySample]):
+    """Paginated response for history read operations."""
 
 
 class TimeRange(BaseModel):

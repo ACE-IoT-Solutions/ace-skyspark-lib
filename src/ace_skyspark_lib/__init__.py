@@ -2,12 +2,18 @@
 
 from ace_skyspark_lib.client import SkysparkClient
 from ace_skyspark_lib.models.entities import Equipment, Point, Site
-from ace_skyspark_lib.models.history import HistorySample, HistoryWriteResult, TimeRange
+from ace_skyspark_lib.models.history import (
+    HistoryReadResponse,
+    HistorySample,
+    HistoryWriteResult,
+    TimeRange,
+)
 
-__version__ = "0.1.0"
+__version__ = "0.1.9"
 
 __all__ = [
     "Equipment",
+    "HistoryReadResponse",
     "HistorySample",
     "HistoryWriteResult",
     "Point",
@@ -19,7 +25,7 @@ __all__ = [
 
 def main() -> None:
     """CLI entry point."""
-    print("ace-skyspark-lib v0.1.0")
+    print("ace-skyspark-lib v0.1.9")
     print("Modern async SkySpark client with Pydantic validation")
     print("\nUsage:")
     print("  from ace_skyspark_lib import SkysparkClient")

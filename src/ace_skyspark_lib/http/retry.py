@@ -90,8 +90,8 @@ class RetryPolicy:
         if isinstance(exception, network_errors):
             return True
 
-        # Server errors (5xx)
+        # Server errors (5xx) or Unauthorized (401) for token refresh
         if isinstance(exception, httpx.HTTPStatusError):
             status = exception.response.status_code
-            return 500 <= status < 600
+            return 500 <= status < 600 or status == 401
         return False

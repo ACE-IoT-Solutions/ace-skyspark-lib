@@ -13,7 +13,7 @@ def test_site_serialization():
         geo_addr="123 Main St",
         area=50000.0,
         year_built=2020,
-        tags={"custom": "value"},
+        kv_tags={"custom": "value"},
     )
 
     # Test both methods work
@@ -68,7 +68,7 @@ def test_equipment_serialization():
         site_ref="p:demo:r:site123",
         equip_ref="p:demo:r:parent_equip",
         tz="America/Chicago",
-        tags={"ahu": "m:", "hvac": "m:"},
+        marker_tags=["ahu", "hvac"],
     )
 
     dict1 = equip.to_zinc_dict()

@@ -240,6 +240,36 @@ async def test_complete_roundtrip() -> None:
             f"Expected {len(bulk_samples)} samples, wrote {total_written}"
         )
 
+        # Step 7.5: Verify history reading
+        print("\n📈 Step 7.5: Verifying history reading...")
+        try:
+            # Read back history for temperature point
+            # Use a slightly wider range to be safe
+            read_start = now - timedelta(hours=25)
+            read_end = now + timedelta(hours=1)
+            
+            read_samples = await client.read_history_all(
+                temp_point_id, 
+                start_time=read_start, 
+                end_time=read_end,
+                per_page=50
+            )
+            
+            print(f"   ✓ Read back {len(read_samples)} samples for point {temp_point_id}")
+            # We wrote 24 samples in Step 5 and 100 in Step 7 = 124 total
+            assert len(read_samples) >= 124, f"Expected at least 124 samples, got {len(read_samples)}"
+            
+            # Check a few samples
+            assert all(isinstance(s.value, (float, int)) for s in read_samples), "Expected numeric values"
+            print(f"   ✓ Verified history data integrity")
+            
+        except Exception as e:
+            # If server doesn't support /timeseries yet, this might fail
+            # We'll log it but not fail the whole test if it's a 404
+            print(f"   ⚠️  History read verification failed: {e}")
+            if "404" not in str(e):
+                 raise
+
         # Step 8: Cleanup (non-fatal - delete implementation may need work)
         print("\n🧹 Step 8: Cleaning up test entities (best effort)...")
         try:
