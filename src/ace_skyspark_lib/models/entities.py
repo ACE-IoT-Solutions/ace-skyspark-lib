@@ -1,5 +1,6 @@
 """Pydantic models for Haystack entities (Site, Equipment, Point)."""
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -55,6 +56,43 @@ def _parse_zinc_datetime(value: dict[str, Any]) -> datetime:
         pass
 
     return dt
+
+
+_VALID_TAG_NAME = re.compile(r"^[a-z][a-zA-Z0-9_]*$")
+
+
+def _sanitize_tag_name(name: str) -> str:
+    """Normalize an arbitrary string into a valid Haystack tag name.
+
+    Haystack/Zinc dict tag names must start with an ASCII lowercase letter and
+    contain only ASCII letters, digits, and underscores. SkySpark rejects
+    anything else at parse time with `Invalid dict tag name: "..."`. ACE
+    kv_tags and marker tags can carry display-style names (e.g. "Chilled" or
+    "Chilled Water") that violate this, so we normalize them the same way
+    SkySpark's own `Etc.toTagName` does: split on non-alphanumeric boundaries,
+    camelCase the tokens, and guarantee a lowercase-letter first character.
+
+    Examples:
+        "Chilled"        -> "chilled"
+        "Chilled Water"  -> "chilledWater"
+        "ace_topic"      -> "ace_topic"  (already valid, unchanged)
+        "3rd Floor"      -> "v3rdFloor"
+    """
+    if _VALID_TAG_NAME.match(name):
+        return name
+
+    tokens = re.findall(r"[A-Za-z0-9]+", name)
+    if not tokens:
+        return "v"  # nothing usable; fall back to a valid placeholder
+
+    head = tokens[0][0].lower() + tokens[0][1:]
+    tail = "".join(t[0].upper() + t[1:] for t in tokens[1:])
+    result = head + tail
+
+    if not result[0].isalpha():
+        # Tag names cannot start with a digit; prefix a marker letter.
+        result = "v" + result
+    return result[0].lower() + result[1:]
 
 
 class HaystackRef(BaseModel):
@@ -178,12 +216,13 @@ class Site(BaseModel):
         if self.year_built:
             data["yearBuilt"] = self.year_built
 
-        # Add markers
+        # Add markers (normalize names to valid Haystack tag names)
         for tag in self.marker_tags:
-            data[tag] = "m:"
-        
-        # Add custom tags
-        data.update(self.kv_tags)
+            data[_sanitize_tag_name(tag)] = "m:"
+
+        # Add custom tags (normalize keys to valid Haystack tag names)
+        for key, value in self.kv_tags.items():
+            data[_sanitize_tag_name(key)] = value
 
         return data
 
@@ -297,12 +336,13 @@ class Equipment(BaseModel):
         if self.equip_ref:
             data["equipRef"] = f"@{self.equip_ref}"
 
-        # Add markers
+        # Add markers (normalize names to valid Haystack tag names)
         for tag in self.marker_tags:
-            data[tag] = "m:"
+            data[_sanitize_tag_name(tag)] = "m:"
 
-        # Add custom tags
-        data.update(self.kv_tags)
+        # Add custom tags (normalize keys to valid Haystack tag names)
+        for key, value in self.kv_tags.items():
+            data[_sanitize_tag_name(key)] = value
 
         return data
 
@@ -500,12 +540,13 @@ class Point(BaseModel):
         if self.writable:
             data["writable"] = "m:"
 
-        # Add marker tags
+        # Add marker tags (normalize names to valid Haystack tag names)
         for tag in self.marker_tags:
-            data[tag] = "m:"
+            data[_sanitize_tag_name(tag)] = "m:"
 
-        # Add kv tags
-        data.update(self.kv_tags)
+        # Add kv tags (normalize keys to valid Haystack tag names)
+        for key, value in self.kv_tags.items():
+            data[_sanitize_tag_name(key)] = value
 
         return data
 
