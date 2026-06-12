@@ -274,8 +274,14 @@ class ZincEncoder:
             if isinstance(sample.value, bool):
                 val_str = str(sample.value).lower()
             elif isinstance(sample.value, str):
-                # SECURITY FIX: Escape string values to prevent injection
-                val_str = f'"{_escape_zinc_string(sample.value)}"'
+                # The value is an Axon string literal embedded inside a Zinc
+                # string, so its quotes/backslashes must survive both layers:
+                # escape for the Axon layer, then escape that result for the
+                # Zinc layer (matching the \" used for the parseDateTime args
+                # below). Without the second pass the bare quotes terminate the
+                # outer Zinc string and corrupt the grid.
+                axon_literal = f'"{_escape_zinc_string(sample.value)}"'
+                val_str = axon_literal.replace("\\", "\\\\").replace('"', '\\"')
             else:
                 val_str = str(sample.value)
 
