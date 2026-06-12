@@ -21,6 +21,7 @@ class ScramAuthenticator:
         username: str,
         password: str,
         session: httpx.AsyncClient,
+        session_max_age_seconds: int = 900,
     ) -> None:
         """Initialize authenticator.
 
@@ -30,12 +31,14 @@ class ScramAuthenticator:
             username: Username for authentication
             password: Password for authentication
             session: Active httpx AsyncClient
+            session_max_age_seconds: Requested SkySpark auth session lifetime in seconds
         """
         self.base_url = base_url.rstrip("/")
         self.project = project
         self.username = username
         self.password = password
         self.session = session
+        self.session_max_age_seconds = session_max_age_seconds
 
     async def authenticate(self) -> str:
         """Perform full SCRAM handshake.
@@ -204,7 +207,8 @@ class ScramAuthenticator:
 
         url = f"{self.base_url}/{self.project}/about"
         auth_header = (
-            f"SCRAM handshakeToken={handshake_token}, hash=SHA-256, data={b64_client_final}"
+            f"SCRAM handshakeToken={handshake_token}, hash=SHA-256, "
+            f"data={b64_client_final}, maxAge={self.session_max_age_seconds}"
         )
         headers = {"Authorization": auth_header}
 

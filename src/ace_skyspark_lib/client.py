@@ -34,6 +34,7 @@ class SkysparkClient:
         timeout: float = 30.0,
         max_retries: int = 3,
         pool_size: int = 10,
+        session_max_age_seconds: int = 900,
     ) -> None:
         """Initialize SkySpark client.
 
@@ -45,6 +46,7 @@ class SkysparkClient:
             timeout: Request timeout in seconds
             max_retries: Maximum retry attempts
             pool_size: Connection pool size
+            session_max_age_seconds: Requested SkySpark auth session lifetime in seconds
         """
         self.base_url = base_url.rstrip("/")
         self.project = project
@@ -53,6 +55,7 @@ class SkysparkClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.pool_size = pool_size
+        self.session_max_age_seconds = session_max_age_seconds
 
         # Will be initialized in __aenter__
         self._auth_session: httpx.AsyncClient | None = None
@@ -90,8 +93,12 @@ class SkysparkClient:
             username=self.username,
             password=self.password,
             session=self._auth_session,
+            session_max_age_seconds=self.session_max_age_seconds,
         )
-        self._token_manager = TokenManager(authenticator)
+        self._token_manager = TokenManager(
+            authenticator,
+            cache_duration=self.session_max_age_seconds,
+        )
 
         # Authenticate immediately
         await self._token_manager.get_token()
