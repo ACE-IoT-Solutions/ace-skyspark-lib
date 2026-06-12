@@ -103,17 +103,21 @@ class QueryOperations:
         self,
         site_ref: str | None = None,
         equip_ref: str | None = None,
+        his_only: bool = False,
     ) -> list[dict[str, Any]]:
         """Read points with optional filters.
 
         Args:
             site_ref: Optional site ID to filter by
             equip_ref: Optional equipment ID to filter by
+            his_only: If True, only return historized points
 
         Returns:
             List of point dictionaries
         """
         filter_expr = "point"
+        if his_only:
+            filter_expr += " and his"
         if site_ref:
             filter_expr += f" and siteRef==@{site_ref}"
         if equip_ref:
@@ -125,17 +129,19 @@ class QueryOperations:
         self,
         site_ref: str | None = None,
         equip_ref: str | None = None,
+        his_only: bool = False,
     ) -> list[Point]:
         """Read points and convert to Point models.
 
         Args:
             site_ref: Optional site ID to filter by
             equip_ref: Optional equipment ID to filter by
+            his_only: If True, only return historized points
 
         Returns:
             List of Point models
         """
-        rows = await self.read_points(site_ref=site_ref, equip_ref=equip_ref)
+        rows = await self.read_points(site_ref=site_ref, equip_ref=equip_ref, his_only=his_only)
         return [Point.from_zinc_dict(row) for row in rows]
 
     async def get_project_timezone(self) -> str:

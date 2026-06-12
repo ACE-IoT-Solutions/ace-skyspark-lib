@@ -186,12 +186,14 @@ class SkysparkClient:
         self,
         site_ref: str | None = None,
         equip_ref: str | None = None,
+        his_only: bool = False,
     ) -> list[dict]:
         """Read points with optional filters.
 
         Args:
             site_ref: Optional site ID to filter by
             equip_ref: Optional equipment ID to filter by
+            his_only: If True, only return historized points
 
         Returns:
             List of point dictionaries
@@ -199,18 +201,22 @@ class SkysparkClient:
         if not self._query:
             msg = "Client not initialized. Use 'async with' context manager."
             raise RuntimeError(msg)
-        return await self._query.read_points(site_ref=site_ref, equip_ref=equip_ref)
+        return await self._query.read_points(
+            site_ref=site_ref, equip_ref=equip_ref, his_only=his_only
+        )
 
     async def read_points_as_models(
         self,
         site_ref: str | None = None,
         equip_ref: str | None = None,
+        his_only: bool = False,
     ) -> list[Point]:
         """Read points and convert to Point models.
 
         Args:
             site_ref: Optional site ID to filter by
             equip_ref: Optional equipment ID to filter by
+            his_only: If True, only return historized points
 
         Returns:
             List of Point models
@@ -218,7 +224,9 @@ class SkysparkClient:
         if not self._query:
             msg = "Client not initialized. Use 'async with' context manager."
             raise RuntimeError(msg)
-        return await self._query.read_points_as_models(site_ref=site_ref, equip_ref=equip_ref)
+        return await self._query.read_points_as_models(
+            site_ref=site_ref, equip_ref=equip_ref, his_only=his_only
+        )
 
     async def get_project_timezone(self) -> str:
         """Get the project's default timezone.
