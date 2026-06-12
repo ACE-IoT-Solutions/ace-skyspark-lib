@@ -9,7 +9,7 @@ from ace_skyspark_lib.models.history import (
     TimeRange,
 )
 
-__version__ = "0.1.12"
+__version__ = "0.1.13"
 
 __all__ = [
     "Equipment",
@@ -25,7 +25,7 @@ __all__ = [
 
 def main() -> None:
     """CLI entry point."""
-    print("ace-skyspark-lib v0.1.12")
+    print("ace-skyspark-lib v0.1.13")
     print("Modern async SkySpark client with Pydantic validation")
     print("\nUsage:")
     print("  from ace_skyspark_lib import SkysparkClient")

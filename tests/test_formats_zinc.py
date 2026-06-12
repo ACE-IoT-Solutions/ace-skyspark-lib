@@ -9,6 +9,29 @@ from ace_skyspark_lib.models.entities import Equipment, Point, Site
 from ace_skyspark_lib.models.history import HistorySample
 
 
+def _assert_data_rows_are_balanced_zinc_strings(zinc: str) -> None:
+    """Assert each hisWrite data row is a single, well-formed Zinc string.
+
+    The history grid has one column (`expr`), so every data row must be a
+    single Zinc string literal: it starts and ends with `"` and contains no
+    unescaped interior `"`. An unescaped quote terminates the string early and
+    leaves stray tokens that SkySpark rejects with `sys::ParseErr`.
+    """
+    lines = zinc.splitlines()
+    # lines[0] = ver:"3.0", lines[1] = expr header, the rest are data rows.
+    for row in lines[2:]:
+        assert row.startswith('"') and row.endswith('"'), row
+        interior = row[1:-1]
+        index = 0
+        while index < len(interior):
+            char = interior[index]
+            if char == "\\":
+                index += 2  # escaped pair, skip both chars
+                continue
+            assert char != '"', f"unescaped quote in data row: {row}"
+            index += 1
+
+
 class TestZincEncoderSites:
     """Test Zinc encoding for sites."""
 
@@ -347,7 +370,13 @@ class TestZincEncoderHistoryRPC:
         assert "true" in zinc
 
     def test_encode_history_with_string_value(self) -> None:
-        """Test encoding history sample with string value."""
+        """String values are escaped for the Axon-in-Zinc string layer.
+
+        Regression: a bare-quoted value (val: "online") prematurely terminates
+        the outer Zinc string, so SkySpark rejects the grid with
+        `sys::ParseErr: Expected newline not ...`. The value must be embedded
+        with escaped quotes (val: \\"online\\").
+        """
         ts = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         sample = HistorySample(
             pointId="point123",
@@ -356,7 +385,25 @@ class TestZincEncoderHistoryRPC:
         )
         zinc = ZincEncoder.encode_his_write_rpc([sample])
 
-        assert '"online"' in zinc
+        assert r"val: \"online\"" in zinc
+        _assert_data_rows_are_balanced_zinc_strings(zinc)
+
+    def test_encode_history_numeric_string_does_not_break_grid(self) -> None:
+        """Regression for `Expected newline not Number` on numeric strings."""
+        ts = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        sample = HistorySample(pointId="point123", timestamp=ts, value="529")
+        zinc = ZincEncoder.encode_his_write_rpc([sample])
+
+        assert r"val: \"529\"" in zinc
+        _assert_data_rows_are_balanced_zinc_strings(zinc)
+
+    def test_encode_history_string_with_embedded_quote(self) -> None:
+        """A quote inside the value must not break the outer Zinc string."""
+        ts = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        sample = HistorySample(pointId="point123", timestamp=ts, value='a"b')
+        zinc = ZincEncoder.encode_his_write_rpc([sample])
+
+        _assert_data_rows_are_balanced_zinc_strings(zinc)
 
     def test_encode_multiple_history_samples(self) -> None:
         """Test encoding multiple history samples."""
