@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from ace_skyspark_lib.models.entities import Equipment, Point, Site
+from ace_skyspark_lib.models.entities import SKYSPARK_COMPUTED_TAGS, Equipment, Point, Site
 from ace_skyspark_lib.models.history import HistorySample
 
 
@@ -144,8 +144,8 @@ class ZincEncoder:
             valid_keys = {k for k in zinc_dict if k and k.strip()}
             all_tags.update(valid_keys)
         all_tags.discard("id")
-        # Remove any empty strings that might have slipped through
         all_tags.discard("")
+        all_tags -= SKYSPARK_COMPUTED_TAGS
 
         # Header row
         grid += ", ".join(sorted(all_tags)) + "\n"
@@ -225,8 +225,8 @@ class ZincEncoder:
             # Filter out empty string keys before adding to all_tags
             valid_keys = {k for k in zinc_dict if k and k.strip()}
             all_tags.update(valid_keys)
-        # Remove any empty strings that might have slipped through
         all_tags.discard("")
+        all_tags -= SKYSPARK_COMPUTED_TAGS
 
         # Header row
         grid += ", ".join(sorted(all_tags)) + "\n"

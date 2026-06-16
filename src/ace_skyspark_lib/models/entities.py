@@ -16,6 +16,24 @@ from pydantic import (
 )
 
 
+# SkySpark-managed tags that are computed or set by the server framework.
+# These cannot be set persistently via commit:add or commit:update and must
+# never be included in outbound payloads.
+SKYSPARK_COMPUTED_TAGS: frozenset[str] = frozenset({
+    "hisStatus",   # set when history is written
+    "hisEnd",      # computed end of history range
+    "hisStart",    # computed start of history range
+    "mod",         # last-modified timestamp, managed by Folio
+    "curVal",      # current value, set by connector framework
+    "curStatus",   # current status, set by connector framework
+    "curErr",      # current error, set by connector framework
+    "writeVal",    # current write value, set by connector framework
+    "writeStatus", # write status, set by connector framework
+    "writeErr",    # write error, set by connector framework
+    "writeLevel",  # write level, set by connector framework
+})
+
+
 def _parse_zinc_datetime(value: dict[str, Any]) -> datetime:
     """Parse Zinc datetime dict to Python datetime.
 
@@ -180,7 +198,7 @@ class Site(BaseModel):
         kv_tags = {}
 
         for key, value in data.items():
-            if key in known_fields:
+            if key in known_fields or key in SKYSPARK_COMPUTED_TAGS:
                 continue
 
             if value == "m:" or (isinstance(value, dict) and value.get("_kind") == "marker"):
@@ -303,7 +321,7 @@ class Equipment(BaseModel):
         kv_tags = {}
 
         for key, value in data.items():
-            if key in known_fields:
+            if key in known_fields or key in SKYSPARK_COMPUTED_TAGS:
                 continue
 
             if value == "m:" or (isinstance(value, dict) and value.get("_kind") == "marker"):
@@ -435,7 +453,6 @@ class Point(BaseModel):
         if not isinstance(data, dict):
             return data
 
-        # Known system fields (mod is intentionally not here - it goes in kv_tags)
         known_fields = {
             "id",
             "dis",
@@ -464,7 +481,7 @@ class Point(BaseModel):
         kv_tags = {}
 
         for key, value in data.items():
-            if key in known_fields:
+            if key in known_fields or key in SKYSPARK_COMPUTED_TAGS:
                 continue
 
             # Skip if these are already-provided tags (not Zinc format)
