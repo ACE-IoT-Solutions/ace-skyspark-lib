@@ -226,7 +226,7 @@ class ZincEncoder:
             valid_keys = {k for k in zinc_dict if k and k.strip()}
             all_tags.update(valid_keys)
         all_tags.discard("")
-        all_tags -= SKYSPARK_COMPUTED_TAGS
+        all_tags -= (SKYSPARK_COMPUTED_TAGS - {"mod"})
 
         # Header row
         grid += ", ".join(sorted(all_tags)) + "\n"
@@ -331,6 +331,8 @@ class ZincEncoder:
         if isinstance(value, str):
             if value.startswith("@"):  # Ref
                 return value
+            if value.startswith("t:"):  # Old Haystack JSON DateTime literal (e.g. "t:2024-01-01T00:00:00Z UTC")
+                return value[2:]
             # SECURITY FIX: Escape special characters to prevent injection
             return f'"{_escape_zinc_string(value)}"'
         if isinstance(value, bool):
