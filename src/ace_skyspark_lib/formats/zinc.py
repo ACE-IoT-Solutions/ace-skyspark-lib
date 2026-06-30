@@ -263,13 +263,6 @@ class ZincEncoder:
         grid += "expr\n"
 
         for sample in samples:
-            # Get timezone name
-            tz_name = (
-                sample.timestamp.tzinfo.tzname(sample.timestamp)
-                if sample.timestamp.tzinfo
-                else "UTC"
-            )
-
             # Format value
             if isinstance(sample.value, bool):
                 val_str = str(sample.value).lower()
@@ -286,11 +279,13 @@ class ZincEncoder:
                 val_str = str(sample.value)
 
             # Build hisWrite expression.
+            # Timestamps are UTC; toTimeZone converts to the point's configured tz,
+            # which SkySpark requires to match the rec's tz tag.
             ts_iso = sample.timestamp.isoformat()
             expr = (
                 f'"hisWrite('
                 f'{{ts: parseDateTime(\\"{ts_iso}\\", '
-                f'\\"YYYY-MM-DDThh:mm:ssz\\", \\"{tz_name}\\"), '
+                f'\\"YYYY-MM-DDThh:mm:ssz\\").toTimeZone(readById(@{sample.point_id})->tz), '
                 f"val: {val_str}}}, "
                 f'@{sample.point_id})"\n'
             )

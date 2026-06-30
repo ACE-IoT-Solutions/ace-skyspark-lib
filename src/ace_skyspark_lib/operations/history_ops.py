@@ -174,19 +174,36 @@ class HistoryOperations:
         zinc_grid = ZincEncoder.encode_his_write_rpc(samples)
         logger.debug("write_samples_rpc_request", sample_count=len(samples), zinc_size=len(zinc_grid))
         response = await self.session.post_zinc("evalAll", zinc_grid)
-        logger.debug("write_samples_rpc_raw_response", response=response)
 
-        # Check for grid-level error
+        # Check for grid-level error (structured response path)
         if response.get("meta", {}).get("err"):
             error_msg = response.get("meta", {}).get("dis", "Unknown error")
             logger.error("write_samples_rpc_grid_error", error=error_msg)
             raise HistoryWriteError(error_msg)
 
-        # evalAll returns one row per expression — check each for per-row errors.
-        # A successful hisWrite returns null/empty; a failed one has an "err" key.
-        rows = response.get("rows", [])
-        logger.debug("write_samples_rpc_row_count", rows=len(rows), expected=len(samples))
+        # evalAll returns a multi-grid text blob (one Zinc grid per expression), not
+        # a structured rows list. Detect per-expression errors by scanning for errType:.
+        response_text = response.get("text", "")
+        if response_text:
+            grids = [g.strip() for g in response_text.split("\n\n") if g.strip()]
+            error_grids = [g for g in grids if "errType:" in g]
+            if error_grids:
+                excerpt = error_grids[0][:400].replace("\n", " ")
+                logger.error(
+                    "write_samples_rpc_errors",
+                    failed=len(error_grids),
+                    total=len(samples),
+                    first_error=excerpt,
+                )
+                raise HistoryWriteError(
+                    f"{len(error_grids)}/{len(samples)} hisWrite calls failed; "
+                    f"first error: {excerpt[:200]}"
+                )
+            logger.info("write_samples_rpc_complete", count=len(samples))
+            return HistoryWriteResult(success=True, samplesWritten=len(samples))
 
+        # Structured response fallback (non-evalAll paths)
+        rows = response.get("rows", [])
         row_errors = []
         for i, row in enumerate(rows):
             if isinstance(row, dict) and row.get("err"):
@@ -211,10 +228,7 @@ class HistoryOperations:
             )
 
         logger.info("write_samples_rpc_complete", count=len(samples), rows_returned=len(rows))
-        return HistoryWriteResult(
-            success=True,
-            samplesWritten=len(samples),
-        )
+        return HistoryWriteResult(success=True, samplesWritten=len(samples))
 
     async def _write_samples_http(self, samples: list[HistorySample]) -> HistoryWriteResult:
         """Write samples using modern HTTP API (placeholder for future implementation).
