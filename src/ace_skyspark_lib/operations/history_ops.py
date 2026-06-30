@@ -172,14 +172,45 @@ class HistoryOperations:
             HistoryWriteResult
         """
         zinc_grid = ZincEncoder.encode_his_write_rpc(samples)
+        logger.debug("write_samples_rpc_request", sample_count=len(samples), zinc_size=len(zinc_grid))
         response = await self.session.post_zinc("evalAll", zinc_grid)
+        logger.debug("write_samples_rpc_raw_response", response=response)
 
-        # Check for errors in response
+        # Check for grid-level error
         if response.get("meta", {}).get("err"):
             error_msg = response.get("meta", {}).get("dis", "Unknown error")
+            logger.error("write_samples_rpc_grid_error", error=error_msg)
             raise HistoryWriteError(error_msg)
 
-        logger.info("write_samples_rpc_complete", count=len(samples))
+        # evalAll returns one row per expression — check each for per-row errors.
+        # A successful hisWrite returns null/empty; a failed one has an "err" key.
+        rows = response.get("rows", [])
+        logger.debug("write_samples_rpc_row_count", rows=len(rows), expected=len(samples))
+
+        row_errors = []
+        for i, row in enumerate(rows):
+            if isinstance(row, dict) and row.get("err"):
+                sample = samples[i] if i < len(samples) else None
+                row_errors.append({
+                    "row_index": i,
+                    "error": row.get("dis", "unknown row error"),
+                    "point_id": sample.point_id if sample else "unknown",
+                    "timestamp": sample.timestamp.isoformat() if sample else "unknown",
+                })
+
+        if row_errors:
+            logger.error(
+                "write_samples_rpc_row_errors",
+                failed=len(row_errors),
+                total=len(samples),
+                first_errors=row_errors[:5],
+            )
+            raise HistoryWriteError(
+                f"{len(row_errors)}/{len(samples)} hisWrite calls failed; "
+                f"first error: {row_errors[0]['error']}"
+            )
+
+        logger.info("write_samples_rpc_complete", count=len(samples), rows_returned=len(rows))
         return HistoryWriteResult(
             success=True,
             samplesWritten=len(samples),

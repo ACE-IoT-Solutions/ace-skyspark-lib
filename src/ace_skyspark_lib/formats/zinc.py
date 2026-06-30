@@ -285,7 +285,7 @@ class ZincEncoder:
             else:
                 val_str = str(sample.value)
 
-            # Build hisWrite expression
+            # Build hisWrite expression.
             ts_iso = sample.timestamp.isoformat()
             expr = (
                 f'"hisWrite('
