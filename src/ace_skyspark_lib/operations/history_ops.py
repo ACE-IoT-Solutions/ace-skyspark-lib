@@ -1,6 +1,7 @@
 """History write operations with batching and chunking."""
 
 import asyncio
+import math
 from collections.abc import Generator
 from datetime import datetime
 from itertools import islice
@@ -171,6 +172,18 @@ class HistoryOperations:
         Returns:
             HistoryWriteResult
         """
+        # Filter out non-finite floats (inf, -inf, nan) — Axon has no literal for them
+        valid_samples = [
+            s for s in samples
+            if not (isinstance(s.value, float) and not math.isfinite(s.value))
+        ]
+        skipped = len(samples) - len(valid_samples)
+        if skipped:
+            logger.warning("write_samples_rpc_skipped_nonfinite", skipped=skipped, total=len(samples))
+        if not valid_samples:
+            return HistoryWriteResult(success=True, samplesWritten=0)
+        samples = valid_samples
+
         zinc_grid = ZincEncoder.encode_his_write_rpc(samples)
         logger.debug("write_samples_rpc_request", sample_count=len(samples), zinc_size=len(zinc_grid))
         response = await self.session.post_zinc("evalAll", zinc_grid)
@@ -189,16 +202,16 @@ class HistoryOperations:
             error_grids = [g for g in grids if "errType:" in g]
             if error_grids:
                 excerpt = error_grids[0][:400].replace("\n", " ")
+                samples_written = len(samples) - len(error_grids)
                 logger.error(
                     "write_samples_rpc_errors",
                     failed=len(error_grids),
+                    succeeded=samples_written,
                     total=len(samples),
                     first_error=excerpt,
                 )
-                raise HistoryWriteError(
-                    f"{len(error_grids)}/{len(samples)} hisWrite calls failed; "
-                    f"first error: {excerpt[:200]}"
-                )
+                # Return partial success — a few bad samples shouldn't fail the whole batch
+                return HistoryWriteResult(success=True, samplesWritten=samples_written, error=excerpt[:300])
             logger.info("write_samples_rpc_complete", count=len(samples))
             return HistoryWriteResult(success=True, samplesWritten=len(samples))
 
