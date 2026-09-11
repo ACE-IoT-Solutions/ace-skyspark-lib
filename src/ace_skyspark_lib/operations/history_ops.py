@@ -174,18 +174,25 @@ class HistoryOperations:
         """
         # Filter out non-finite floats (inf, -inf, nan) — Axon has no literal for them
         valid_samples = [
-            s for s in samples
-            if not (isinstance(s.value, float) and not math.isfinite(s.value))
+            s for s in samples if not (isinstance(s.value, float) and not math.isfinite(s.value))
         ]
         skipped = len(samples) - len(valid_samples)
         if skipped:
-            logger.warning("write_samples_rpc_skipped_nonfinite", skipped=skipped, total=len(samples))
+            logger.warning(
+                "write_samples_rpc_skipped_nonfinite",
+                skipped=skipped,
+                total=len(samples),
+            )
         if not valid_samples:
             return HistoryWriteResult(success=True, samplesWritten=0)
         samples = valid_samples
 
         zinc_grid = ZincEncoder.encode_his_write_rpc(samples)
-        logger.debug("write_samples_rpc_request", sample_count=len(samples), zinc_size=len(zinc_grid))
+        logger.debug(
+            "write_samples_rpc_request",
+            sample_count=len(samples),
+            zinc_size=len(zinc_grid),
+        )
         response = await self.session.post_zinc("evalAll", zinc_grid)
 
         # Check for grid-level error (structured response path)
@@ -211,7 +218,11 @@ class HistoryOperations:
                     first_error=excerpt,
                 )
                 # Return partial success — a few bad samples shouldn't fail the whole batch
-                return HistoryWriteResult(success=True, samplesWritten=samples_written, error=excerpt[:300])
+                return HistoryWriteResult(
+                    success=True,
+                    samplesWritten=samples_written,
+                    error=excerpt[:300],
+                )
             logger.info("write_samples_rpc_complete", count=len(samples))
             return HistoryWriteResult(success=True, samplesWritten=len(samples))
 
@@ -221,12 +232,14 @@ class HistoryOperations:
         for i, row in enumerate(rows):
             if isinstance(row, dict) and row.get("err"):
                 sample = samples[i] if i < len(samples) else None
-                row_errors.append({
-                    "row_index": i,
-                    "error": row.get("dis", "unknown row error"),
-                    "point_id": sample.point_id if sample else "unknown",
-                    "timestamp": sample.timestamp.isoformat() if sample else "unknown",
-                })
+                row_errors.append(
+                    {
+                        "row_index": i,
+                        "error": row.get("dis", "unknown row error"),
+                        "point_id": sample.point_id if sample else "unknown",
+                        "timestamp": sample.timestamp.isoformat() if sample else "unknown",
+                    }
+                )
 
         if row_errors:
             logger.error(

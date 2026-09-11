@@ -5,7 +5,6 @@ from typing import Any
 import httpx
 import structlog
 
-from ace_skyspark_lib.exceptions import ServerError
 from ace_skyspark_lib.http.retry import RetryPolicy
 
 logger = structlog.get_logger()
@@ -81,7 +80,7 @@ class SessionManager:
                 if e.response.status_code == 401:
                     logger.warning("auth_token_expired_or_invalid", status=401)
                     self.token_provider.invalidate()
-                
+
                 response_text = response.text
                 logger.error(
                     "post_zinc_failed",
@@ -128,14 +127,14 @@ class SessionManager:
             logger.debug("get_json", url=url, params=params)
 
             response = await self.session.get(url, params=params, headers=headers)
-            
+
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 401:
                     logger.warning("auth_token_expired_or_invalid", status=401)
                     self.token_provider.invalidate()
-                
+
                 response_text = response.text
                 logger.error(
                     "get_json_failed",
@@ -174,14 +173,14 @@ class SessionManager:
             logger.debug("post_json", url=url)
 
             response = await self.session.post(url, json=json_data, headers=headers)
-            
+
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 401:
                     logger.warning("auth_token_expired_or_invalid", status=401)
                     self.token_provider.invalidate()
-                
+
                 response_text = response.text
                 logger.error(
                     "post_json_failed",

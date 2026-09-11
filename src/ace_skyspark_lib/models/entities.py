@@ -2,7 +2,7 @@
 
 import re
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import pytz
 from dateutil import parser as date_parser
@@ -15,23 +15,24 @@ from pydantic import (
     model_validator,
 )
 
-
 # SkySpark-managed tags that are computed or set by the server framework.
 # These cannot be set persistently via commit:add or commit:update and must
 # never be included in outbound payloads.
-SKYSPARK_COMPUTED_TAGS: frozenset[str] = frozenset({
-    "hisStatus",   # set when history is written
-    "hisEnd",      # computed end of history range
-    "hisStart",    # computed start of history range
-    "mod",         # last-modified timestamp, managed by Folio
-    "curVal",      # current value, set by connector framework
-    "curStatus",   # current status, set by connector framework
-    "curErr",      # current error, set by connector framework
-    "writeVal",    # current write value, set by connector framework
-    "writeStatus", # write status, set by connector framework
-    "writeErr",    # write error, set by connector framework
-    "writeLevel",  # write level, set by connector framework
-})
+SKYSPARK_COMPUTED_TAGS: frozenset[str] = frozenset(
+    {
+        "hisStatus",  # set when history is written
+        "hisEnd",  # computed end of history range
+        "hisStart",  # computed start of history range
+        "mod",  # last-modified timestamp, managed by Folio
+        "curVal",  # current value, set by connector framework
+        "curStatus",  # current status, set by connector framework
+        "curErr",  # current error, set by connector framework
+        "writeVal",  # current write value, set by connector framework
+        "writeStatus",  # write status, set by connector framework
+        "writeErr",  # write error, set by connector framework
+        "writeLevel",  # write level, set by connector framework
+    }
+)
 
 
 def _parse_zinc_datetime(value: dict[str, Any]) -> datetime:
@@ -47,11 +48,14 @@ def _parse_zinc_datetime(value: dict[str, Any]) -> datetime:
         {"val": "2025-10-30T18:30:00-04:00 New_York", "tz": "New_York"}
         -> datetime with New_York timezone
     """
-    if not isinstance(value, dict) or "val" not in value:
-        return value
+    dt_str = value.get("val")
+    if not isinstance(dt_str, str):
+        msg = "Zinc datetime value must contain a string 'val'"
+        raise ValueError(msg)
 
-    dt_str = value["val"]
     tz_name = value.get("tz", "UTC")
+    if not isinstance(tz_name, str):
+        tz_name = "UTC"
 
     # Extract timezone name from value if present (e.g., "... New_York")
     if " " in dt_str:
@@ -61,7 +65,7 @@ def _parse_zinc_datetime(value: dict[str, Any]) -> datetime:
             tz_name = parts[1]
 
     # Parse the datetime string (gets offset timezone)
-    dt = date_parser.parse(dt_str)
+    dt = cast("datetime", date_parser.parse(dt_str))
 
     # Convert to named timezone if available
     try:
@@ -198,7 +202,7 @@ class Site(BaseModel):
         kv_tags = {}
 
         for key, value in data.items():
-            if key in known_fields or key in SKYSPARK_COMPUTED_TAGS:
+            if key in known_fields or key in SKYSPARK_COMPUTED_TAGS - {"mod"}:
                 continue
 
             if value == "m:" or (isinstance(value, dict) and value.get("_kind") == "marker"):
@@ -321,7 +325,7 @@ class Equipment(BaseModel):
         kv_tags = {}
 
         for key, value in data.items():
-            if key in known_fields or key in SKYSPARK_COMPUTED_TAGS:
+            if key in known_fields or key in SKYSPARK_COMPUTED_TAGS - {"mod"}:
                 continue
 
             if value == "m:" or (isinstance(value, dict) and value.get("_kind") == "marker"):
@@ -481,7 +485,7 @@ class Point(BaseModel):
         kv_tags = {}
 
         for key, value in data.items():
-            if key in known_fields or key in SKYSPARK_COMPUTED_TAGS:
+            if key in known_fields or key in SKYSPARK_COMPUTED_TAGS - {"mod"}:
                 continue
 
             # Skip if these are already-provided tags (not Zinc format)

@@ -57,3 +57,5 @@ htmlcov/
 
 # uv lock file (keep this commented if you want to version it)
 # uv.lock
+# CocoIndex Code (ccc)
+/.cocoindex_code/
