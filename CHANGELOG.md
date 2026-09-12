@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.21] - 2026-09-12
+
+### Fixed
+- Restrict tag-triggered TestPyPI publishing to `v*-test` tags so production release
+  tags no longer fail against an unconfigured TestPyPI trusted publisher.
+
 ## [0.1.20] - 2026-09-12
 
 ### Added
