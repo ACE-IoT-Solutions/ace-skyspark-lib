@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.22] - 2026-09-12
+
+### Added
+- Retry failed token refreshes with bounded exponential backoff and share the failure
+  cooldown across concurrent callers to prevent repeated authentication bursts.
+
+### Changed
+- Include HTTP status, URL, selected headers, redirect history, and a short body preview
+  when a SCRAM HELLO response does not contain a usable authentication challenge.
+- Apply the client's configured `max_retries` setting to authentication refreshes.
+
 ## [0.1.21] - 2026-09-12
 
 ### Fixed

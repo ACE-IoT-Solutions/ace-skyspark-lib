@@ -11,6 +11,23 @@ from ace_skyspark_lib.exceptions import AuthenticationError
 logger = structlog.get_logger()
 
 
+def _response_diagnostics(response: httpx.Response, body_limit: int = 200) -> str:
+    """Return safe, compact response details for authentication errors."""
+    body = " ".join(response.text.split())[:body_limit]
+    redirect_statuses = [item.status_code for item in response.history]
+    details = {
+        "status": response.status_code,
+        "url": str(response.url),
+        "content_type": response.headers.get("content-type"),
+        "location": response.headers.get("location"),
+        "server": response.headers.get("server"),
+        "via": response.headers.get("via"),
+        "redirects": redirect_statuses,
+        "body": body,
+    }
+    return ", ".join(f"{key}={value!r}" for key, value in details.items())
+
+
 class ScramAuthenticator:
     """SCRAM-SHA-256 authentication handler."""
 
@@ -88,12 +105,15 @@ class ScramAuthenticator:
         response = await self.session.get(url, headers=headers)
         # SCRAM HELLO should return 401 with www-authenticate header
         if response.status_code not in (200, 401):
-            msg = f"HELLO failed with status {response.status_code}"
+            msg = f"HELLO failed: {_response_diagnostics(response)}"
             raise AuthenticationError(msg)
 
         www_auth = response.headers.get("www-authenticate")
         if not www_auth:
-            msg = "No www-authenticate header in HELLO response"
+            msg = (
+                "HELLO response did not contain a usable WWW-Authenticate challenge: "
+                f"{_response_diagnostics(response)}"
+            )
             raise AuthenticationError(msg)
 
         # Extract handshakeToken

@@ -98,6 +98,7 @@ class SkysparkClient:
         self._token_manager = TokenManager(
             authenticator,
             cache_duration=self.session_max_age_seconds,
+            max_retries=self.max_retries,
         )
 
         # Authenticate immediately
