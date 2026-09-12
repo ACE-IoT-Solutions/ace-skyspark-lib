@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.20] - 2026-09-12
+
+### Added
+- Add standards-compliant batch `hisWrite` grids with one value column per point.
+- Automatically group writes by configured point timezone and split groups by
+  `max_request_size`.
+
+### Changed
+- Use the HTTP batch `hisWrite` operation by default; failed batch writes fall back to
+  bulk `evalAll`, then single-point Zinc `hisWrite` grids. The legacy path remains
+  directly available with `use_rpc=True`.
+
 ## [0.1.19] - 2026-09-11
 
 ### Fixed

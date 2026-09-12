@@ -398,13 +398,15 @@ class SkysparkClient:
     async def write_history(
         self,
         samples: list[HistorySample],
-        use_rpc: bool = True,
+        use_rpc: bool = False,
+        max_request_size: int = 1000,
     ) -> HistoryWriteResult:
         """Write history samples.
 
         Args:
             samples: List of history samples to write
-            use_rpc: Use RPC evalAll method (default True for compatibility)
+            use_rpc: Use the legacy RPC evalAll method instead of batch hisWrite
+            max_request_size: Maximum samples in each HTTP hisWrite request
 
         Returns:
             HistoryWriteResult with success status
@@ -412,7 +414,11 @@ class SkysparkClient:
         if not self._history:
             msg = "Client not initialized. Use 'async with' context manager."
             raise RuntimeError(msg)
-        return await self._history.write_samples(samples, use_rpc=use_rpc)
+        return await self._history.write_samples(
+            samples,
+            use_rpc=use_rpc,
+            max_request_size=max_request_size,
+        )
 
     async def write_history_chunked(
         self,

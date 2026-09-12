@@ -446,6 +446,58 @@ class TestZincEncoderHistoryRPC:
         assert zinc == ""
 
 
+class TestZincEncoderHistoryBatch:
+    """Test standard batch hisWrite grid encoding."""
+
+    def test_encodes_point_columns_and_sparse_rows(self) -> None:
+        ts1 = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+        ts2 = datetime(2024, 1, 1, 12, 15, tzinfo=timezone.utc)
+        samples = [
+            HistorySample(pointId="point-a", timestamp=ts1, value=72.5),
+            HistorySample(pointId="point-b", timestamp=ts1, value=True),
+            HistorySample(pointId="point-a", timestamp=ts2, value="online"),
+        ]
+
+        zinc = ZincEncoder.encode_his_write_batch(samples, "UTC")
+
+        assert zinc.startswith('ver:"3.0"\nts,v0 id:@point-a,v1 id:@point-b\n')
+        assert "2024-01-01T12:00:00+00:00 UTC,72.5,T" in zinc
+        assert '2024-01-01T12:15:00+00:00 UTC,"online",N' in zinc
+
+    def test_preserves_duplicate_samples(self) -> None:
+        ts = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+        samples = [
+            HistorySample(pointId="point-a", timestamp=ts, value=1.0),
+            HistorySample(pointId="point-a", timestamp=ts, value=2.0),
+        ]
+
+        zinc = ZincEncoder.encode_his_write_batch(samples, "UTC")
+
+        assert zinc.count("2024-01-01T12:00:00+00:00 UTC") == 2
+        assert zinc.endswith(",1.0\n2024-01-01T12:00:00+00:00 UTC,2.0\n")
+
+    def test_empty_batch_is_empty(self) -> None:
+        assert ZincEncoder.encode_his_write_batch([], "UTC") == ""
+
+    def test_encodes_single_point_grid(self) -> None:
+        sample = HistorySample(
+            pointId="point-a",
+            timestamp=datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc),
+            value="online",
+        )
+
+        zinc = ZincEncoder.encode_his_write_single("point-a", [sample], "UTC")
+
+        assert zinc == (
+            'ver:"3.0" id:@point-a\n'
+            "ts,val\n"
+            '2024-01-01T12:00:00+00:00 UTC,"online"\n'
+        )
+
+    def test_encode_read_by_ids(self) -> None:
+        assert ZincEncoder.encode_read_by_ids(["a", "b"]) == 'ver:"3.0"\nid\n@a\n@b\n'
+
+
 class TestZincEncoderReadOperations:
     """Test Zinc encoding for read operations."""
 

@@ -1,5 +1,6 @@
 """Zinc grid encoding for Haystack operations."""
 
+from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
@@ -294,6 +295,79 @@ class ZincEncoder:
         return grid
 
     @staticmethod
+    def encode_his_write_batch(samples: list[HistorySample], timezone_name: str) -> str:
+        """Encode a standard Haystack batch ``hisWrite`` request.
+
+        Each point is represented by a ``v{i}`` column whose column metadata
+        contains its id. Samples that share a timestamp are combined into the
+        same row; missing point values are encoded as Zinc nulls.
+
+        Args:
+            samples: Samples for points that share one configured timezone.
+            timezone_name: Haystack timezone name shared by all points.
+
+        Returns:
+            Zinc grid accepted by the standard ``hisWrite`` HTTP operation.
+        """
+        if not samples:
+            return ""
+
+        point_ids = list(dict.fromkeys(sample.point_id for sample in samples))
+        point_indexes = {point_id: index for index, point_id in enumerate(point_ids)}
+
+        # A timestamp may occur more than once for one point. Keep every sample
+        # by creating as many same-timestamp rows as the largest duplicate set.
+        by_timestamp: dict[datetime, dict[str, list[HistorySample]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        for sample in samples:
+            by_timestamp[sample.timestamp].setdefault(sample.point_id, []).append(sample)
+
+        header = ["ts"] + [f"v{i} id:@{point_id}" for i, point_id in enumerate(point_ids)]
+        lines = ['ver:"3.0"', ",".join(header)]
+
+        for timestamp in sorted(by_timestamp):
+            samples_by_point = by_timestamp[timestamp]
+            duplicate_rows = max(len(values) for values in samples_by_point.values())
+            for duplicate_index in range(duplicate_rows):
+                row = [ZincEncoder._encode_datetime(timestamp, timezone_name)] + ["N"] * len(
+                    point_ids
+                )
+                for point_id, point_samples in samples_by_point.items():
+                    if duplicate_index < len(point_samples):
+                        row[point_indexes[point_id] + 1] = ZincEncoder._encode_value(
+                            point_samples[duplicate_index].value
+                        )
+                lines.append(",".join(row))
+
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def encode_his_write_single(
+        point_id: str,
+        samples: list[HistorySample],
+        timezone_name: str,
+    ) -> str:
+        """Encode a standard single-point ``hisWrite`` request grid."""
+        if not samples:
+            return ""
+
+        lines = [f'ver:"3.0" id:@{point_id}', "ts,val"]
+        lines.extend(
+            f"{ZincEncoder._encode_datetime(sample.timestamp, timezone_name)},"
+            f"{ZincEncoder._encode_value(sample.value)}"
+            for sample in sorted(samples, key=lambda item: item.timestamp)
+        )
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def encode_read_by_ids(entity_ids: list[str]) -> str:
+        """Encode a standard ordered read-by-id request grid."""
+        if not entity_ids:
+            return ""
+        return 'ver:"3.0"\nid\n' + "".join(f"@{entity_id}\n" for entity_id in entity_ids)
+
+    @staticmethod
     def encode_read_by_filter(filter_expr: str) -> str:
         """Encode read operation by filter.
 
@@ -348,3 +422,8 @@ class ZincEncoder:
             return f"{val} {tz}"
         # SECURITY FIX: Escape any other string-like values
         return f'"{_escape_zinc_string(str(value))}"'
+
+    @staticmethod
+    def _encode_datetime(value: datetime, timezone_name: str) -> str:
+        """Encode a datetime with an explicit Haystack timezone name."""
+        return f"{value.isoformat()} {timezone_name}"

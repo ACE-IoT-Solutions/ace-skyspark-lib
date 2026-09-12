@@ -2,9 +2,12 @@
 
 import asyncio
 import math
+from collections import defaultdict
 from collections.abc import Generator
 from datetime import datetime
+from functools import cache
 from itertools import islice
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 import structlog
 
@@ -128,13 +131,15 @@ class HistoryOperations:
     async def write_samples(
         self,
         samples: list[HistorySample],
-        use_rpc: bool = True,
+        use_rpc: bool = False,
+        max_request_size: int = 1000,
     ) -> HistoryWriteResult:
         """Write history samples.
 
         Args:
             samples: List of history samples to write
-            use_rpc: Use RPC evalAll method (default True for compatibility)
+            use_rpc: Use the legacy RPC evalAll method instead of batch hisWrite
+            max_request_size: Maximum samples in each HTTP hisWrite request
 
         Returns:
             HistoryWriteResult with success status and count
@@ -147,20 +152,78 @@ class HistoryOperations:
                 success=True,
                 samplesWritten=0,
             )
+        if max_request_size <= 0:
+            msg = "max_request_size must be greater than zero"
+            raise ValueError(msg)
 
-        logger.info("write_samples", count=len(samples), method="rpc" if use_rpc else "http")
+        valid_samples = [
+            sample
+            for sample in samples
+            if not (isinstance(sample.value, float) and not math.isfinite(sample.value))
+        ]
+        skipped = len(samples) - len(valid_samples)
+        if skipped:
+            logger.warning(
+                "write_samples_skipped_nonfinite",
+                skipped=skipped,
+                total=len(samples),
+            )
+        if not valid_samples:
+            return HistoryWriteResult(success=True, samplesWritten=0)
+
+        logger.info(
+            "write_samples",
+            count=len(valid_samples),
+            method="rpc" if use_rpc else "http",
+        )
+
+        if use_rpc:
+            try:
+                return await self._write_samples_rpc(valid_samples)
+            except Exception as error:
+                logger.error("write_samples_failed", method="rpc", error=str(error))
+                return HistoryWriteResult(
+                    success=False,
+                    samplesWritten=0,
+                    error=str(error),
+                    details={"method": "rpc"},
+                )
+
+        fallback_errors: list[str] = []
+        try:
+            result = await self._write_samples_http(valid_samples, max_request_size)
+            result.details["method"] = "batch_http"
+            return result
+        except Exception as error:
+            fallback_errors.append(f"batch_http: {error}")
+            logger.warning("write_samples_fallback", failed_method="batch_http", error=str(error))
 
         try:
-            if use_rpc:
-                return await self._write_samples_rpc(samples)
-            return await self._write_samples_http(samples)
+            result = await self._write_samples_rpc(valid_samples)
+            if result.success and not result.error:
+                result.details.update({"method": "rpc", "fallback_errors": fallback_errors.copy()})
+                return result
+            rpc_error = result.error or "legacy bulk evalAll returned an unsuccessful result"
+            fallback_errors.append(f"rpc: {rpc_error}")
+            logger.warning("write_samples_fallback", failed_method="rpc", error=rpc_error)
+        except Exception as error:
+            fallback_errors.append(f"rpc: {error}")
+            logger.warning("write_samples_fallback", failed_method="rpc", error=str(error))
 
-        except Exception as e:
-            logger.error("write_samples_failed", error=str(e))
+        try:
+            result = await self._write_samples_single_http(valid_samples, max_request_size)
+            result.details.update(
+                {"method": "single_http", "fallback_errors": fallback_errors.copy()}
+            )
+            return result
+        except Exception as error:
+            fallback_errors.append(f"single_http: {error}")
+            logger.error("write_samples_failed", method="single_http", error=str(error))
             return HistoryWriteResult(
                 success=False,
                 samplesWritten=0,
-                error=str(e),
+                error="; ".join(fallback_errors),
+                details={"method": "single_http", "fallback_errors": fallback_errors},
             )
 
     async def _write_samples_rpc(self, samples: list[HistorySample]) -> HistoryWriteResult:
@@ -172,21 +235,6 @@ class HistoryOperations:
         Returns:
             HistoryWriteResult
         """
-        # Filter out non-finite floats (inf, -inf, nan) — Axon has no literal for them
-        valid_samples = [
-            s for s in samples if not (isinstance(s.value, float) and not math.isfinite(s.value))
-        ]
-        skipped = len(samples) - len(valid_samples)
-        if skipped:
-            logger.warning(
-                "write_samples_rpc_skipped_nonfinite",
-                skipped=skipped,
-                total=len(samples),
-            )
-        if not valid_samples:
-            return HistoryWriteResult(success=True, samplesWritten=0)
-        samples = valid_samples
-
         zinc_grid = ZincEncoder.encode_his_write_rpc(samples)
         logger.debug(
             "write_samples_rpc_request",
@@ -256,8 +304,12 @@ class HistoryOperations:
         logger.info("write_samples_rpc_complete", count=len(samples), rows_returned=len(rows))
         return HistoryWriteResult(success=True, samplesWritten=len(samples))
 
-    async def _write_samples_http(self, samples: list[HistorySample]) -> HistoryWriteResult:
-        """Write samples using modern HTTP API (placeholder for future implementation).
+    async def _write_samples_http(
+        self,
+        samples: list[HistorySample],
+        max_request_size: int,
+    ) -> HistoryWriteResult:
+        """Write samples using timezone-aware standard batch hisWrite requests.
 
         Args:
             samples: History samples to write
@@ -265,10 +317,128 @@ class HistoryOperations:
         Returns:
             HistoryWriteResult
         """
-        # TODO: Implement modern HTTP API batch hisWrite when available
-        # For now, fall back to RPC method
-        logger.warning("http_method_not_implemented", fallback="rpc")
-        return await self._write_samples_rpc(samples)
+        point_ids = list(dict.fromkeys(sample.point_id for sample in samples))
+        point_timezones = await self._read_point_timezones(point_ids)
+
+        by_timezone: dict[str, list[HistorySample]] = defaultdict(list)
+        for sample in samples:
+            timezone_name = point_timezones[sample.point_id]
+            timezone = _resolve_timezone(timezone_name, sample.timestamp)
+            by_timezone[timezone_name].append(
+                sample.model_copy(update={"timestamp": sample.timestamp.astimezone(timezone)})
+            )
+
+        request_count = 0
+        for timezone_name, timezone_samples in by_timezone.items():
+            timezone_samples.sort(key=lambda sample: (sample.timestamp, sample.point_id))
+            for request_samples in self._chunk_list(timezone_samples, max_request_size):
+                zinc_grid = ZincEncoder.encode_his_write_batch(request_samples, timezone_name)
+                logger.debug(
+                    "write_samples_http_request",
+                    timezone=timezone_name,
+                    sample_count=len(request_samples),
+                    point_count=len({sample.point_id for sample in request_samples}),
+                    zinc_size=len(zinc_grid),
+                )
+                response = await self.session.post_zinc("hisWrite", zinc_grid)
+                self._raise_for_his_write_error(response)
+                request_count += 1
+
+        logger.info(
+            "write_samples_http_complete",
+            count=len(samples),
+            requests=request_count,
+            timezones=list(by_timezone),
+        )
+        return HistoryWriteResult(
+            success=True,
+            samplesWritten=len(samples),
+            details={"requests": request_count, "timezones": list(by_timezone)},
+        )
+
+    async def _write_samples_single_http(
+        self,
+        samples: list[HistorySample],
+        max_request_size: int,
+    ) -> HistoryWriteResult:
+        """Write one point per standard Zinc hisWrite request as a final fallback."""
+        point_ids = list(dict.fromkeys(sample.point_id for sample in samples))
+        point_timezones = await self._read_point_timezones(point_ids)
+        by_point: dict[str, list[HistorySample]] = defaultdict(list)
+        for sample in samples:
+            timezone_name = point_timezones[sample.point_id]
+            timezone = _resolve_timezone(timezone_name, sample.timestamp)
+            by_point[sample.point_id].append(
+                sample.model_copy(update={"timestamp": sample.timestamp.astimezone(timezone)})
+            )
+
+        request_count = 0
+        for point_id, point_samples in by_point.items():
+            timezone_name = point_timezones[point_id]
+            for request_samples in self._chunk_list(point_samples, max_request_size):
+                zinc_grid = ZincEncoder.encode_his_write_single(
+                    point_id,
+                    request_samples,
+                    timezone_name,
+                )
+                logger.debug(
+                    "write_samples_single_http_request",
+                    point_id=point_id,
+                    timezone=timezone_name,
+                    sample_count=len(request_samples),
+                    zinc_size=len(zinc_grid),
+                )
+                response = await self.session.post_zinc("hisWrite", zinc_grid)
+                self._raise_for_his_write_error(response)
+                request_count += 1
+
+        logger.info(
+            "write_samples_single_http_complete",
+            count=len(samples),
+            requests=request_count,
+            points=len(by_point),
+        )
+        return HistoryWriteResult(
+            success=True,
+            samplesWritten=len(samples),
+            details={"requests": request_count, "points": len(by_point)},
+        )
+
+    async def _read_point_timezones(self, point_ids: list[str]) -> dict[str, str]:
+        """Read and validate configured timezones for a set of points."""
+        response = await self.session.post_zinc(
+            "read",
+            ZincEncoder.encode_read_by_ids(point_ids),
+        )
+        if response.get("meta", {}).get("err"):
+            error_msg = response.get("meta", {}).get("dis", "Unable to read point timezones")
+            raise HistoryWriteError(str(error_msg))
+
+        rows = response.get("rows", [])
+        point_timezones: dict[str, str] = {}
+        for index, point_id in enumerate(point_ids):
+            row = rows[index] if index < len(rows) else None
+            timezone_name = row.get("tz") if isinstance(row, dict) else None
+            if isinstance(timezone_name, dict):
+                timezone_name = timezone_name.get("val") or timezone_name.get("tz")
+            if not timezone_name:
+                msg = f"Point @{point_id} was not found or has no configured timezone"
+                raise HistoryWriteError(msg)
+            point_timezones[point_id] = str(timezone_name)
+        return point_timezones
+
+    @staticmethod
+    def _raise_for_his_write_error(response: dict[str, object]) -> None:
+        """Raise for structured or Zinc-text error grids."""
+        meta = response.get("meta")
+        if isinstance(meta, dict) and meta.get("err"):
+            raise HistoryWriteError(str(meta.get("dis", "Unknown hisWrite error")))
+        response_text = response.get("text")
+        if isinstance(response_text, str) and (
+            "errType:" in response_text or " err" in response_text
+        ):
+            excerpt = response_text[:400].replace("\n", " ")
+            raise HistoryWriteError(excerpt)
 
     async def write_samples_chunked(
         self,
@@ -288,6 +458,12 @@ class HistoryOperations:
         """
         if not samples:
             return []
+        if chunk_size <= 0:
+            msg = "chunk_size must be greater than zero"
+            raise ValueError(msg)
+        if max_concurrent <= 0:
+            msg = "max_concurrent must be greater than zero"
+            raise ValueError(msg)
 
         logger.info(
             "write_samples_chunked",
@@ -322,7 +498,7 @@ class HistoryOperations:
 
         async def process_chunk(chunk: list[HistorySample]) -> HistoryWriteResult:
             async with semaphore:
-                return await self.write_samples(chunk)
+                return await self.write_samples(chunk, max_request_size=chunk_size)
 
         # Execute all chunks
         chunk_results = await asyncio.gather(
@@ -372,3 +548,36 @@ class HistoryOperations:
         iterator = iter(items)
         while chunk := list(islice(iterator, size)):
             yield chunk
+
+
+@cache
+def _timezone_candidates(timezone_name: str) -> tuple[str, ...]:
+    """Map a Haystack city timezone name to installed IANA timezone keys."""
+    if "/" in timezone_name or timezone_name == "UTC":
+        return (timezone_name,)
+    suffix = f"/{timezone_name}"
+    return tuple(sorted(zone for zone in available_timezones() if zone.endswith(suffix)))
+
+
+def _resolve_timezone(timezone_name: str, timestamp: datetime) -> ZoneInfo:
+    """Resolve Haystack timezone names, preferring the timestamp's own zone."""
+    timestamp_zone = getattr(timestamp.tzinfo, "key", None) or getattr(
+        timestamp.tzinfo, "zone", None
+    )
+    if isinstance(timestamp_zone, str) and (
+        timestamp_zone == timezone_name or timestamp_zone.endswith(f"/{timezone_name}")
+    ):
+        return ZoneInfo(timestamp_zone)
+
+    candidates = _timezone_candidates(timezone_name)
+    if len(candidates) != 1:
+        if not candidates:
+            msg = f"Unknown point timezone {timezone_name!r}"
+        else:
+            msg = f"Ambiguous point timezone {timezone_name!r}: {', '.join(candidates)}"
+        raise HistoryWriteError(msg)
+    try:
+        return ZoneInfo(candidates[0])
+    except ZoneInfoNotFoundError as error:
+        msg = f"Unknown point timezone {timezone_name!r}"
+        raise HistoryWriteError(msg) from error

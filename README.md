@@ -201,7 +201,10 @@ samples = [
     HistorySample(point_id="p1", timestamp=now + timedelta(minutes=5), value=72.6),
 ]
 
-result = await client.write_history(samples)
+# Uses the standard batch hisWrite operation. Point timezones are discovered
+# automatically; different timezones and requests over the size limit are split.
+# Unsupported batch writes fall back to bulk evalAll, then single-point Zinc grids.
+result = await client.write_history(samples, max_request_size=1000)
 ```
 
 ### Bulk Writing with Chunking
