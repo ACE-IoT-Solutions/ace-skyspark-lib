@@ -39,6 +39,7 @@ class ScramAuthenticator:
         password: str,
         session: httpx.AsyncClient,
         session_max_age_seconds: int = 900,
+        auth_timeout: float = 30.0,
     ) -> None:
         """Initialize authenticator.
 
@@ -47,8 +48,13 @@ class ScramAuthenticator:
             project: Project name
             username: Username for authentication
             password: Password for authentication
-            session: Active httpx AsyncClient
+            session: Active httpx AsyncClient. Used as-is by the individual
+                HELLO/CLIENT-FIRST/CLIENT-FINAL step methods, but ``authenticate()``
+                swaps in a fresh, never-before-used connection for the duration of
+                each full handshake (see there for why).
             session_max_age_seconds: Requested SkySpark auth session lifetime in seconds
+            auth_timeout: Timeout for the fresh per-handshake connection ``authenticate()``
+                opens
         """
         self.base_url = base_url.rstrip("/")
         self.project = project
@@ -56,6 +62,7 @@ class ScramAuthenticator:
         self.password = password
         self.session = session
         self.session_max_age_seconds = session_max_age_seconds
+        self.auth_timeout = auth_timeout
 
     async def authenticate(self) -> str:
         """Perform full SCRAM handshake.
@@ -68,6 +75,16 @@ class ScramAuthenticator:
         """
         logger.info("scram_auth_starting", username=self.username)
 
+        # SkySpark appears to treat a connection as already-authenticated once it
+        # has completed one handshake on it, and will answer a later HELLO on that
+        # same (pooled/reused) connection with a plain 200 instead of issuing a
+        # fresh 401 challenge. That only surfaces when a flow run outlives its
+        # token and re-authenticates mid-run over the shared long-lived auth
+        # session. Run every handshake on a brand-new connection so re-auth never
+        # rides a connection a prior handshake already touched.
+        original_session = self.session
+        fresh_session = httpx.AsyncClient(timeout=self.auth_timeout)
+        self.session = fresh_session
         try:
             # Step 1: HELLO
             handshake_token = await self._hello()
@@ -87,6 +104,9 @@ class ScramAuthenticator:
             logger.error("scram_auth_failed", error=str(e))
             msg = f"SCRAM authentication failed: {e}"
             raise AuthenticationError(msg) from e
+        finally:
+            self.session = original_session
+            await fresh_session.aclose()
 
     async def _hello(self) -> str:
         """SCRAM step 1: send HELLO, get handshake token.
