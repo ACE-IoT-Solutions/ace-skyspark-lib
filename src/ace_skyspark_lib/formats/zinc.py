@@ -41,6 +41,11 @@ def _escape_zinc_string(s: str) -> str:
     return "".join(c for c in s if ord(c) >= 32 or c in "\t\n\r")
 
 
+def _haystack_timezone_name(timezone_name: str) -> str:
+    """Convert an IANA timezone key to Haystack's canonical city name."""
+    return timezone_name.rsplit("/", 1)[-1]
+
+
 class ZincEncoder:
     """Encode Python objects to Zinc grid format."""
 
@@ -413,12 +418,14 @@ class ZincEncoder:
             # Zinc datetime format: ISO8601 + space + timezone name
             # E.g., "2025-10-30T18:30:00-04:00 New_York"
             iso_str = value.isoformat()
-            tz_name = value.tzinfo.tzname(value) if value.tzinfo else "UTC"
+            timezone_key = getattr(value.tzinfo, "key", None) or getattr(value.tzinfo, "zone", None)
+            timezone_label = timezone_key or (value.tzinfo.tzname(value) if value.tzinfo else "UTC")
+            tz_name = _haystack_timezone_name(str(timezone_label or "UTC"))
             return f"{iso_str} {tz_name}"
         if isinstance(value, dict) and value.get("_kind") == "dateTime":
             # Handle SkySpark DateTime dict format: {"_kind": "dateTime", "val": "...", "tz": "..."}
             val = value.get("val", "")
-            tz = value.get("tz", "UTC")
+            tz = _haystack_timezone_name(str(value.get("tz", "UTC")))
             return f"{val} {tz}"
         # SECURITY FIX: Escape any other string-like values
         return f'"{_escape_zinc_string(str(value))}"'
@@ -426,4 +433,4 @@ class ZincEncoder:
     @staticmethod
     def _encode_datetime(value: datetime, timezone_name: str) -> str:
         """Encode a datetime with an explicit Haystack timezone name."""
-        return f"{value.isoformat()} {timezone_name}"
+        return f"{value.isoformat()} {_haystack_timezone_name(timezone_name)}"
