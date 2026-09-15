@@ -5,17 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.24] - 2026-09-14
-
-### Fixed
-- Re-authenticate on a fresh connection instead of the long-lived auth session.
-  SkySpark treats a connection as already-authenticated once one handshake has
-  completed on it, and answers a later HELLO on that same reused connection with
-  a plain `200` instead of a fresh `401` challenge. This only surfaced on flow
-  runs that outlived their token (over ~15 minutes) and had to re-authenticate
-  mid-run, which previously failed every retry with "HELLO response did not
-  contain a usable WWW-Authenticate challenge: status=200 ...".
-
 ## [0.1.23] - 2026-09-14
 
 ### Fixed
