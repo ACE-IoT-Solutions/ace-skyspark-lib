@@ -145,6 +145,107 @@ async def test_batch_his_write_honors_max_request_size(history_ops, mock_session
 
 
 @pytest.mark.asyncio
+async def test_batch_his_write_skips_identified_bad_point_and_retries_bulk(
+    history_ops: HistoryOperations, mock_session: AsyncMock
+) -> None:
+    timestamp = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    bad_point_id = "p:lcmcWestJefferson:r:2c7f6734-a60d5fce"
+    samples = [
+        HistorySample(pointId=bad_point_id, timestamp=timestamp, value=1.0),
+        HistorySample(pointId="good-point", timestamp=timestamp, value=2.0),
+        HistorySample(
+            pointId=bad_point_id,
+            timestamp=timestamp + timedelta(minutes=5),
+            value=3.0,
+        ),
+    ]
+    config_error = (
+        "s:folio::HisConfigErr: Missing 'kind' tag "
+        f'[@{bad_point_id} "Point missing kind"]'
+    )
+    mock_session.post_zinc.side_effect = [
+        {"rows": [{"tz": "UTC"}, {"tz": "UTC"}]},
+        {"meta": {"err": True, "dis": config_error}},
+        {"text": 'ver:"3.0"\nempty\n'},
+    ]
+
+    result = await history_ops.write_samples(samples)
+
+    assert result.success is True
+    assert result.samples_written == 1
+    assert result.error == config_error
+    assert result.details == {
+        "requests": 2,
+        "timezones": ["UTC"],
+        "rejected_point_ids": [bad_point_id],
+        "rejected_samples": 2,
+        "method": "batch_http",
+    }
+    calls = mock_session.post_zinc.call_args_list
+    assert [call.args[0] for call in calls] == ["read", "hisWrite", "hisWrite"]
+    assert f"@{bad_point_id}" in calls[1].args[1]
+    assert "@good-point" in calls[1].args[1]
+    assert f"@{bad_point_id}" not in calls[2].args[1]
+    assert "@good-point" in calls[2].args[1]
+
+
+@pytest.mark.asyncio
+async def test_batch_his_write_keeps_rejected_point_out_of_later_chunks(
+    history_ops: HistoryOperations, mock_session: AsyncMock
+) -> None:
+    start = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    samples = [
+        HistorySample(pointId="bad-point", timestamp=start, value=1.0),
+        HistorySample(pointId="good-a", timestamp=start, value=2.0),
+        HistorySample(
+            pointId="bad-point",
+            timestamp=start + timedelta(minutes=5),
+            value=3.0,
+        ),
+        HistorySample(
+            pointId="good-b",
+            timestamp=start + timedelta(minutes=5),
+            value=4.0,
+        ),
+    ]
+    error = "s:folio::HisConfigErr: Missing 'kind' tag [@bad-point]"
+    mock_session.post_zinc.side_effect = [
+        {"rows": [{"tz": "UTC"}, {"tz": "UTC"}, {"tz": "UTC"}]},
+        {"text": f'ver:"3.0" err dis:"{error}" errType:"sys::Err"\nempty\n'},
+        {"text": 'ver:"3.0"\nempty\n'},
+        {"text": 'ver:"3.0"\nempty\n'},
+    ]
+
+    result = await history_ops.write_samples(samples, max_request_size=2)
+
+    assert result.samples_written == 2
+    assert result.details["rejected_point_ids"] == ["bad-point"]
+    assert result.details["rejected_samples"] == 2
+    write_grids = [call.args[1] for call in mock_session.post_zinc.call_args_list[1:]]
+    assert "@bad-point" in write_grids[0]
+    assert all("@bad-point" not in grid for grid in write_grids[1:])
+    assert "@good-a" in write_grids[1]
+    assert "@good-b" in write_grids[2]
+
+
+def test_point_error_extraction_requires_safe_attribution() -> None:
+    candidates = {"candidate"}
+
+    assert HistoryOperations._point_ids_from_his_write_error(
+        "s:folio::HisConfigErr [@candidate]",
+        candidates,
+    ) == {"candidate"}
+    assert not HistoryOperations._point_ids_from_his_write_error(
+        "s:folio::OtherErr [@candidate]",
+        candidates,
+    )
+    assert not HistoryOperations._point_ids_from_his_write_error(
+        "s:folio::HisConfigErr [@different-point]",
+        candidates,
+    )
+
+
+@pytest.mark.asyncio
 async def test_batch_his_write_falls_back_to_rpc(history_ops, mock_session):
     sample = HistorySample(
         pointId="point",

@@ -2,6 +2,7 @@
 
 import asyncio
 import math
+import re
 from collections import defaultdict
 from collections.abc import Generator
 from datetime import datetime
@@ -21,6 +22,9 @@ from ace_skyspark_lib.models.history import (
 )
 
 logger = structlog.get_logger()
+
+_POINT_REF_IN_ERROR = re.compile(r'\[@([^\s\]",]+)')
+_POINT_SCOPED_HIS_WRITE_ERRORS = ("HisConfigErr", "UnknownRecErr", "HisWriteErr")
 
 
 class HistoryOperations:
@@ -329,32 +333,91 @@ class HistoryOperations:
             )
 
         request_count = 0
+        rejected_point_ids: set[str] = set()
+        rejection_errors: list[str] = []
         for timezone_name, timezone_samples in by_timezone.items():
             timezone_samples.sort(key=lambda sample: (sample.timestamp, sample.point_id))
             for request_samples in self._chunk_list(timezone_samples, max_request_size):
-                zinc_grid = ZincEncoder.encode_his_write_batch(request_samples, timezone_name)
-                logger.debug(
-                    "write_samples_http_request",
-                    timezone=timezone_name,
-                    sample_count=len(request_samples),
-                    point_count=len({sample.point_id for sample in request_samples}),
-                    zinc_size=len(zinc_grid),
-                )
-                response = await self.session.post_zinc("hisWrite", zinc_grid)
-                self._raise_for_his_write_error(response)
-                request_count += 1
+                pending_samples = [
+                    sample
+                    for sample in request_samples
+                    if sample.point_id not in rejected_point_ids
+                ]
+                while pending_samples:
+                    zinc_grid = ZincEncoder.encode_his_write_batch(pending_samples, timezone_name)
+                    logger.debug(
+                        "write_samples_http_request",
+                        timezone=timezone_name,
+                        sample_count=len(pending_samples),
+                        point_count=len({sample.point_id for sample in pending_samples}),
+                        zinc_size=len(zinc_grid),
+                    )
+                    response = await self.session.post_zinc("hisWrite", zinc_grid)
+                    request_count += 1
+                    try:
+                        self._raise_for_his_write_error(response)
+                    except HistoryWriteError as error:
+                        error_text = str(error)
+                        failed_point_ids = self._point_ids_from_his_write_error(
+                            error_text,
+                            {sample.point_id for sample in pending_samples},
+                        )
+                        if not failed_point_ids:
+                            raise
+                        rejected_point_ids.update(failed_point_ids)
+                        rejection_errors.append(error_text)
+                        pending_samples = [
+                            sample
+                            for sample in pending_samples
+                            if sample.point_id not in failed_point_ids
+                        ]
+                        logger.warning(
+                            "write_samples_http_skipping_points",
+                            point_ids=sorted(failed_point_ids),
+                            skipped_samples=sum(
+                                sample.point_id in failed_point_ids for sample in samples
+                            ),
+                            remaining_samples=len(pending_samples),
+                            error=error_text,
+                        )
+                        continue
+                    break
+
+        rejected_samples = sum(sample.point_id in rejected_point_ids for sample in samples)
 
         logger.info(
             "write_samples_http_complete",
-            count=len(samples),
+            count=len(samples) - rejected_samples,
+            rejected_samples=rejected_samples,
+            rejected_points=len(rejected_point_ids),
             requests=request_count,
             timezones=list(by_timezone),
         )
         return HistoryWriteResult(
             success=True,
-            samplesWritten=len(samples),
-            details={"requests": request_count, "timezones": list(by_timezone)},
+            samplesWritten=len(samples) - rejected_samples,
+            error="; ".join(dict.fromkeys(rejection_errors)) or None,
+            details={
+                "requests": request_count,
+                "timezones": list(by_timezone),
+                "rejected_point_ids": sorted(rejected_point_ids),
+                "rejected_samples": rejected_samples,
+            },
         )
+
+    @staticmethod
+    def _point_ids_from_his_write_error(
+        error: str,
+        candidate_point_ids: set[str],
+    ) -> set[str]:
+        """Extract safely attributable point refs from a point-scoped error."""
+        if not any(error_type in error for error_type in _POINT_SCOPED_HIS_WRITE_ERRORS):
+            return set()
+        return {
+            point_id
+            for point_id in _POINT_REF_IN_ERROR.findall(error)
+            if point_id in candidate_point_ids
+        }
 
     async def _write_samples_single_http(
         self,

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.26] - 2026-09-16
+
+### Changed
+- Continue batch history writes after safely attributable point-scoped SkySpark errors
+  by excluding rejected points and retrying the remaining samples.
+- Report rejected point IDs, rejected sample counts, and server errors in partial-success
+  history write results.
+
+### Fixed
+- Synchronize the package, runtime, and lockfile versions after the unreleased 0.1.25
+  baseline updated only the package metadata.
+
 ## [0.1.25] - 2026-09-15
 
 No functional changes from 0.1.23. A fix for mid-run re-authentication (opening
