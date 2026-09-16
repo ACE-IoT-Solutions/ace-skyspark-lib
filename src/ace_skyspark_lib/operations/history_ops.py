@@ -204,7 +204,7 @@ class HistoryOperations:
 
         try:
             result = await self._write_samples_rpc(valid_samples)
-            if result.success and not result.error:
+            if result.success:
                 result.details.update({"method": "rpc", "fallback_errors": fallback_errors.copy()})
                 return result
             rpc_error = result.error or "legacy bulk evalAll returned an unsuccessful result"
@@ -258,22 +258,55 @@ class HistoryOperations:
         response_text = response.get("text", "")
         if response_text:
             grids = [g.strip() for g in response_text.split("\n\n") if g.strip()]
-            error_grids = [g for g in grids if "errType:" in g]
-            if error_grids:
-                excerpt = error_grids[0][:400].replace("\n", " ")
-                samples_written = len(samples) - len(error_grids)
-                logger.error(
+            failed_samples: list[dict[str, object]] = []
+            samples_written = 0
+            for index, sample in enumerate(samples):
+                if index >= len(grids):
+                    excerpt = "Missing evalAll response grid"
+                elif "errType:" in grids[index]:
+                    excerpt = grids[index][:400].replace("\n", " ")
+                else:
+                    samples_written += 1
+                    continue
+
+                failure = {
+                    "point_id": sample.point_id,
+                    "timestamp": sample.timestamp.isoformat(),
+                    "error": excerpt,
+                }
+                failed_samples.append(failure)
+                logger.warning("write_samples_rpc_sample_failed", **failure)
+
+            if len(grids) > len(samples):
+                logger.warning(
+                    "write_samples_rpc_extra_grids",
+                    expected=len(samples),
+                    received=len(grids),
+                )
+
+            if failed_samples:
+                log = logger.warning if samples_written else logger.error
+                log(
                     "write_samples_rpc_errors",
-                    failed=len(error_grids),
+                    failed=len(failed_samples),
                     succeeded=samples_written,
                     total=len(samples),
-                    first_error=excerpt,
+                    failed_point_ids=[failure["point_id"] for failure in failed_samples],
                 )
-                # Return partial success — a few bad samples shouldn't fail the whole batch
+                # Partial RPC success is terminal: successful expressions have already
+                # written their samples, and retrying the entire input would duplicate
+                # work and eventually degrade to one request per point.
                 return HistoryWriteResult(
-                    success=True,
+                    success=samples_written > 0,
                     samplesWritten=samples_written,
-                    error=excerpt[:300],
+                    error=None if samples_written else str(failed_samples[0]["error"])[:300],
+                    details={
+                        "failed_samples": failed_samples,
+                        "failed_point_ids": list(
+                            dict.fromkeys(str(failure["point_id"]) for failure in failed_samples)
+                        ),
+                        "response_grid_count": len(grids),
+                    },
                 )
             logger.info("write_samples_rpc_complete", count=len(samples))
             return HistoryWriteResult(success=True, samplesWritten=len(samples))

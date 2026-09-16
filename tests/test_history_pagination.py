@@ -1,8 +1,11 @@
 """Tests for paginated history reading."""
 
-import pytest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
-from datetime import datetime, timezone, timedelta
+
+import pytest
+from structlog.testing import capture_logs
+
 from ace_skyspark_lib.operations.history_ops import HistoryOperations
 from ace_skyspark_lib.models.history import HistoryReadResponse, HistorySample
 
@@ -267,6 +270,78 @@ async def test_batch_his_write_falls_back_to_rpc(history_ops, mock_session):
 
 
 @pytest.mark.asyncio
+async def test_partial_rpc_success_is_terminal_and_logs_failed_sample(
+    history_ops: HistoryOperations, mock_session: AsyncMock
+) -> None:
+    timestamp = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    samples = [
+        HistorySample(pointId="good-point", timestamp=timestamp, value=1.0),
+        HistorySample(pointId="computed-point", timestamp=timestamp, value=2.0),
+    ]
+    computed_error = (
+        'ver:"3.0" errType:"axon::EvalErr" err\n'
+        "sys::ArgErr: Cannot write to computed history: Computed Point"
+    )
+    mock_session.post_zinc.side_effect = [
+        {"rows": [{"tz": "UTC"}, {"tz": "UTC"}]},
+        {"meta": {"err": True, "dis": "batch unsupported"}},
+        {"text": f'ver:"3.0"\nempty\n\n{computed_error}'},
+    ]
+
+    with capture_logs() as logs:
+        result = await history_ops.write_samples(samples)
+
+    assert result.success is True
+    assert result.samples_written == 1
+    assert result.error is None
+    assert result.details["method"] == "rpc"
+    assert result.details["failed_point_ids"] == ["computed-point"]
+    assert result.details["failed_samples"][0]["timestamp"] == timestamp.isoformat()
+    assert result.details["fallback_errors"] == ["batch_http: batch unsupported"]
+    assert [call.args[0] for call in mock_session.post_zinc.call_args_list] == [
+        "read",
+        "hisWrite",
+        "evalAll",
+    ]
+    failed_logs = [log for log in logs if log["event"] == "write_samples_rpc_sample_failed"]
+    assert len(failed_logs) == 1
+    assert failed_logs[0]["point_id"] == "computed-point"
+    assert "Cannot write to computed history" in str(failed_logs[0]["error"])
+
+
+@pytest.mark.asyncio
+async def test_partial_rpc_response_does_not_count_missing_grids_as_success(
+    history_ops: HistoryOperations, mock_session: AsyncMock
+) -> None:
+    timestamp = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    samples = [
+        HistorySample(pointId="confirmed-point", timestamp=timestamp, value=1.0),
+        HistorySample(pointId="unreported-point", timestamp=timestamp, value=2.0),
+    ]
+    mock_session.post_zinc.side_effect = [
+        {"rows": [{"tz": "UTC"}, {"tz": "UTC"}]},
+        {"meta": {"err": True, "dis": "batch unsupported"}},
+        {"text": 'ver:"3.0"\nempty\n'},
+    ]
+
+    result = await history_ops.write_samples(samples)
+
+    assert result.success is True
+    assert result.samples_written == 1
+    assert result.details["method"] == "rpc"
+    assert result.details["failed_point_ids"] == ["unreported-point"]
+    assert result.details["failed_samples"][0]["error"] == (
+        "Missing evalAll response grid"
+    )
+    assert result.details["response_grid_count"] == 1
+    assert [call.args[0] for call in mock_session.post_zinc.call_args_list] == [
+        "read",
+        "hisWrite",
+        "evalAll",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_batch_and_rpc_failures_fall_back_to_single_point_grids(
     history_ops, mock_session
 ):
@@ -278,7 +353,12 @@ async def test_batch_and_rpc_failures_fall_back_to_single_point_grids(
     mock_session.post_zinc.side_effect = [
         {"rows": [{"tz": "UTC"}, {"tz": "UTC"}]},
         {"meta": {"err": True, "dis": "batch unsupported"}},
-        {"text": 'ver:"3.0" errType:"test"\nempty\n'},
+        {
+            "text": (
+                'ver:"3.0" errType:"test"\nempty\n\n'
+                'ver:"3.0" errType:"test"\nempty\n'
+            )
+        },
         {"rows": [{"tz": "UTC"}, {"tz": "UTC"}]},
         {"text": 'ver:"3.0"\nempty\n'},
         {"text": 'ver:"3.0"\nempty\n'},
