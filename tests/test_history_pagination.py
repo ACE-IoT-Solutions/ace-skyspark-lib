@@ -183,6 +183,9 @@ async def test_batch_his_write_skips_identified_bad_point_and_retries_bulk(
         "rejected_point_ids": [bad_point_id],
         "rejected_samples": 2,
         "method": "batch_http",
+        "preferred_method": "batch_http",
+        "skipped_known_rejected_samples": 0,
+        "session_rejected_point_ids": [bad_point_id],
     }
     calls = mock_session.post_zinc.call_args_list
     assert [call.args[0] for call in calls] == ["read", "hisWrite", "hisWrite"]
@@ -403,6 +406,88 @@ async def test_all_his_write_methods_fail(history_ops, mock_session):
     assert len(result.details["fallback_errors"]) == 3
     assert "no configured timezone" in str(result.error)
     assert "rpc failed" in str(result.error)
+    assert result.details["preferred_method"] == "auto"
+    assert history_ops.preferred_write_method == "auto"
+
+    mock_session.reset_mock()
+    mock_session.post_zinc.side_effect = [
+        {"rows": [{"tz": "UTC"}]},
+        {"text": 'ver:"3.0"\nempty\n'},
+    ]
+
+    retry = await history_ops.write_samples([sample])
+
+    assert retry.success is True
+    assert retry.details["method"] == "batch_http"
+    assert retry.details["preferred_method"] == "batch_http"
+    assert [call.args[0] for call in mock_session.post_zinc.call_args_list] == [
+        "read",
+        "hisWrite",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_rejected_points_are_suppressed_for_later_writes(
+    history_ops: HistoryOperations,
+    mock_session: AsyncMock,
+) -> None:
+    timestamp = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    bad_point_id = "bad-point"
+    samples = [
+        HistorySample(pointId=bad_point_id, timestamp=timestamp, value=1.0),
+        HistorySample(pointId="good-point", timestamp=timestamp, value=2.0),
+    ]
+    error = f"s:folio::HisConfigErr: Missing 'kind' tag [@{bad_point_id}]"
+    mock_session.post_zinc.side_effect = [
+        {"rows": [{"tz": "UTC"}, {"tz": "UTC"}]},
+        {"meta": {"err": True, "dis": error}},
+        {"text": 'ver:"3.0"\nempty\n'},
+        {"rows": [{"tz": "UTC"}]},
+        {"text": 'ver:"3.0"\nempty\n'},
+    ]
+
+    first = await history_ops.write_samples(samples)
+    second = await history_ops.write_samples(samples)
+
+    assert first.details["session_rejected_point_ids"] == [bad_point_id]
+    assert second.samples_written == 1
+    assert second.details["skipped_known_rejected_samples"] == 1
+    assert second.details["method"] == "batch_http"
+    second_read = mock_session.post_zinc.call_args_list[3].args[1]
+    second_write = mock_session.post_zinc.call_args_list[4].args[1]
+    assert f"@{bad_point_id}" not in second_read
+    assert f"@{bad_point_id}" not in second_write
+
+
+@pytest.mark.asyncio
+async def test_successful_rpc_fallback_is_reused_without_retrying_batch(
+    history_ops: HistoryOperations,
+    mock_session: AsyncMock,
+) -> None:
+    sample = HistorySample(
+        pointId="point",
+        timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        value=1.0,
+    )
+    mock_session.post_zinc.side_effect = [
+        {"rows": [{"tz": "UTC"}]},
+        {"meta": {"err": True, "dis": "batch unsupported"}},
+        {"text": 'ver:"3.0"\nempty\n'},
+        {"text": 'ver:"3.0"\nempty\n'},
+    ]
+
+    first = await history_ops.write_samples([sample])
+    second = await history_ops.write_samples([sample])
+
+    assert first.details["method"] == "rpc"
+    assert first.details["preferred_method"] == "rpc"
+    assert second.details["method"] == "rpc"
+    assert [call.args[0] for call in mock_session.post_zinc.call_args_list] == [
+        "read",
+        "hisWrite",
+        "evalAll",
+        "evalAll",
+    ]
 
 
 @pytest.mark.asyncio

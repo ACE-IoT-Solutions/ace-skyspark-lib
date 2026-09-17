@@ -37,6 +37,18 @@ class HistoryOperations:
             session_manager: HTTP session manager
         """
         self.session = session_manager
+        self._preferred_write_method = "auto"
+        self._rejected_point_ids: set[str] = set()
+
+    @property
+    def preferred_write_method(self) -> str:
+        """Return the method that subsequent writes will use for this session."""
+        return self._preferred_write_method
+
+    @property
+    def rejected_point_ids(self) -> frozenset[str]:
+        """Return point IDs suppressed after attributable write failures."""
+        return frozenset(self._rejected_point_ids)
 
     async def read_history(
         self,
@@ -160,44 +172,89 @@ class HistoryOperations:
             msg = "max_request_size must be greater than zero"
             raise ValueError(msg)
 
-        valid_samples = [
+        known_rejected_samples = [
+            sample for sample in samples if sample.point_id in self._rejected_point_ids
+        ]
+        if known_rejected_samples:
+            logger.warning(
+                "write_samples_skipped_rejected_points",
+                point_ids=sorted({sample.point_id for sample in known_rejected_samples}),
+                skipped_samples=len(known_rejected_samples),
+                session_rejected_points=len(self._rejected_point_ids),
+            )
+
+        finite_samples = [
             sample
             for sample in samples
             if not (isinstance(sample.value, float) and not math.isfinite(sample.value))
         ]
-        skipped = len(samples) - len(valid_samples)
-        if skipped:
+        skipped_nonfinite = len(samples) - len(finite_samples)
+        if skipped_nonfinite:
             logger.warning(
                 "write_samples_skipped_nonfinite",
-                skipped=skipped,
+                skipped=skipped_nonfinite,
                 total=len(samples),
             )
+        valid_samples = [
+            sample for sample in finite_samples if sample.point_id not in self._rejected_point_ids
+        ]
         if not valid_samples:
-            return HistoryWriteResult(success=True, samplesWritten=0)
+            return HistoryWriteResult(
+                success=True,
+                samplesWritten=0,
+                details={
+                    "method": self._preferred_write_method,
+                    "preferred_method": self._preferred_write_method,
+                    "rejected_point_ids": sorted(self._rejected_point_ids),
+                    "skipped_known_rejected_samples": len(known_rejected_samples),
+                    "session_rejected_point_ids": sorted(self._rejected_point_ids),
+                },
+            )
+
+        selected_method = "rpc" if use_rpc else self._preferred_write_method
 
         logger.info(
             "write_samples",
             count=len(valid_samples),
-            method="rpc" if use_rpc else "http",
+            method=selected_method,
+            skipped_known_rejected_samples=len(known_rejected_samples),
         )
 
-        if use_rpc:
+        if selected_method != "auto":
             try:
-                return await self._write_samples_rpc(valid_samples)
+                result = await self._write_samples_with_method(
+                    selected_method,
+                    valid_samples,
+                    max_request_size,
+                )
             except Exception as error:
-                logger.error("write_samples_failed", method="rpc", error=str(error))
-                return HistoryWriteResult(
+                logger.error(
+                    "write_samples_failed",
+                    method=selected_method,
+                    error=str(error),
+                )
+                result = HistoryWriteResult(
                     success=False,
                     samplesWritten=0,
                     error=str(error),
-                    details={"method": "rpc"},
+                    details={"method": selected_method},
                 )
+            return self._finalize_write_result(
+                result,
+                valid_samples,
+                len(known_rejected_samples),
+            )
 
         fallback_errors: list[str] = []
         try:
             result = await self._write_samples_http(valid_samples, max_request_size)
             result.details["method"] = "batch_http"
-            return result
+            self._preferred_write_method = "batch_http"
+            return self._finalize_write_result(
+                result,
+                valid_samples,
+                len(known_rejected_samples),
+            )
         except Exception as error:
             fallback_errors.append(f"batch_http: {error}")
             logger.warning("write_samples_fallback", failed_method="batch_http", error=str(error))
@@ -206,7 +263,12 @@ class HistoryOperations:
             result = await self._write_samples_rpc(valid_samples)
             if result.success:
                 result.details.update({"method": "rpc", "fallback_errors": fallback_errors.copy()})
-                return result
+                self._preferred_write_method = "rpc"
+                return self._finalize_write_result(
+                    result,
+                    valid_samples,
+                    len(known_rejected_samples),
+                )
             rpc_error = result.error or "legacy bulk evalAll returned an unsuccessful result"
             fallback_errors.append(f"rpc: {rpc_error}")
             logger.warning("write_samples_fallback", failed_method="rpc", error=rpc_error)
@@ -219,16 +281,71 @@ class HistoryOperations:
             result.details.update(
                 {"method": "single_http", "fallback_errors": fallback_errors.copy()}
             )
-            return result
+            self._preferred_write_method = "single_http"
+            return self._finalize_write_result(
+                result,
+                valid_samples,
+                len(known_rejected_samples),
+            )
         except Exception as error:
             fallback_errors.append(f"single_http: {error}")
             logger.error("write_samples_failed", method="single_http", error=str(error))
-            return HistoryWriteResult(
+            result = HistoryWriteResult(
                 success=False,
                 samplesWritten=0,
                 error="; ".join(fallback_errors),
                 details={"method": "single_http", "fallback_errors": fallback_errors},
             )
+            return self._finalize_write_result(
+                result,
+                valid_samples,
+                len(known_rejected_samples),
+            )
+
+    async def _write_samples_with_method(
+        self,
+        method: str,
+        samples: list[HistorySample],
+        max_request_size: int,
+    ) -> HistoryWriteResult:
+        """Execute exactly one selected write strategy without fallback."""
+        if method == "batch_http":
+            result = await self._write_samples_http(samples, max_request_size)
+        elif method == "rpc":
+            result = await self._write_samples_rpc(samples)
+        elif method == "single_http":
+            result = await self._write_samples_single_http(samples, max_request_size)
+        else:
+            msg = f"Unknown history write method: {method}"
+            raise ValueError(msg)
+        result.details["method"] = method
+        return result
+
+    def _finalize_write_result(
+        self,
+        result: HistoryWriteResult,
+        samples: list[HistorySample],
+        skipped_known_rejected_samples: int,
+    ) -> HistoryWriteResult:
+        """Persist point rejections and annotate the result with session state."""
+        rejected_ids = {
+            str(point_id)
+            for key in ("rejected_point_ids", "failed_point_ids")
+            for point_id in result.details.get(key, [])
+        }
+        self._rejected_point_ids.update(rejected_ids)
+        result.details.setdefault(
+            "rejected_samples",
+            sum(sample.point_id in rejected_ids for sample in samples),
+        )
+        result.details.update(
+            {
+                "preferred_method": self._preferred_write_method,
+                "skipped_known_rejected_samples": skipped_known_rejected_samples,
+                "session_rejected_point_ids": sorted(self._rejected_point_ids),
+            }
+        )
+        return result
 
     async def _write_samples_rpc(self, samples: list[HistorySample]) -> HistoryWriteResult:
         """Write samples using RPC evalAll method.

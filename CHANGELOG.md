@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.28] - 2026-09-17
+
+### Changed
+- Remember safely attributable rejected point IDs for the authenticated client session
+  and suppress those points from later history batches.
+- Remember the first successful history write strategy (`batch_http`, `rpc`, or
+  `single_http`) and use it directly for subsequent writes instead of replaying the
+  complete fallback chain for every batch.
+- Include the preferred method and session-level rejection state in history write
+  result details for workflow task naming and metrics.
+
+### Fixed
+- Leave automatic strategy selection enabled when every write method fails, allowing a
+  later call to retry the fallback chain instead of pinning an unsuccessful method.
+- Keep the runtime package version synchronized with the release metadata.
+
 ## [0.1.27] - 2026-09-16
 
 ### Fixed
