@@ -128,11 +128,7 @@ class TokenManager:
 
             logger.info("token_refreshed", expires_at=self._token_expiry.isoformat())
 
-            if (
-                previous_token
-                and previous_token != new_token
-                and self.token_releaser is not None
-            ):
+            if previous_token and previous_token != new_token and self.token_releaser is not None:
                 try:
                     await self.token_releaser(previous_token)
                 except Exception as exc:

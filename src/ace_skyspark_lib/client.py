@@ -138,9 +138,7 @@ class SkysparkClient:
                     token_manager.invalidate()
 
         sessions = [
-            session
-            for session in (self._auth_session, self._api_session)
-            if session is not None
+            session for session in (self._auth_session, self._api_session) if session is not None
         ]
         close_results = await asyncio.gather(
             *(session.aclose() for session in sessions),
