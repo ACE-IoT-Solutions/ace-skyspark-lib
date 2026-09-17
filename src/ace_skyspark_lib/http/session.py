@@ -64,7 +64,6 @@ class SessionManager:
                 url=url,
                 zinc_size=len(zinc_data),
                 has_auth=bool(headers.get("Authorization")),
-                auth_header=headers.get("Authorization", "")[:30],
             )
 
             response = await self.session.post(
@@ -90,14 +89,14 @@ class SessionManager:
                 )
                 raise e
 
-            response_text = response.text
-
-            # Try to parse as JSON
+            # Parse JSON directly from the response bytes. Keeping response.text
+            # alive while response.json() materializes a large grid needlessly
+            # duplicates the response in memory.
             try:
                 return response.json()
             except Exception:
                 # If response is not JSON, return text wrapped in dict
-                return {"text": response_text}
+                return {"text": response.text}
 
         return await self.retry_policy.execute(_post)
 
