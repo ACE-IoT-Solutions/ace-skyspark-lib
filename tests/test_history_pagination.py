@@ -394,9 +394,9 @@ async def test_all_his_write_methods_fail(history_ops, mock_session):
         value=1.0,
     )
     mock_session.post_zinc.side_effect = [
-        {"rows": [{}]},
+        {"meta": {"err": True, "dis": "batch read failed"}},
         {"meta": {"err": True, "dis": "rpc failed"}},
-        {"rows": [{}]},
+        {"meta": {"err": True, "dis": "single read failed"}},
     ]
 
     result = await history_ops.write_samples([sample])
@@ -404,8 +404,9 @@ async def test_all_his_write_methods_fail(history_ops, mock_session):
     assert result.success is False
     assert result.details["method"] == "single_http"
     assert len(result.details["fallback_errors"]) == 3
-    assert "no configured timezone" in str(result.error)
+    assert "batch read failed" in str(result.error)
     assert "rpc failed" in str(result.error)
+    assert "single read failed" in str(result.error)
     assert result.details["preferred_method"] == "auto"
     assert history_ops.preferred_write_method == "auto"
 
@@ -424,6 +425,130 @@ async def test_all_his_write_methods_fail(history_ops, mock_session):
         "read",
         "hisWrite",
     ]
+
+
+@pytest.mark.asyncio
+async def test_cached_batch_write_skips_points_without_timezones(
+    history_ops: HistoryOperations,
+    mock_session: AsyncMock,
+) -> None:
+    timestamp = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    seed = HistorySample(pointId="good-point", timestamp=timestamp, value=1.0)
+    samples = [
+        HistorySample(pointId="missing-point", timestamp=timestamp, value=2.0),
+        HistorySample(pointId="good-point", timestamp=timestamp, value=3.0),
+        HistorySample(
+            pointId="missing-point",
+            timestamp=timestamp + timedelta(minutes=5),
+            value=4.0,
+        ),
+    ]
+    mock_session.post_zinc.side_effect = [
+        {"rows": [{"tz": "UTC"}]},
+        {"text": 'ver:"3.0"\nempty\n'},
+        {"rows": [{}, {"tz": "UTC"}]},
+        {"text": 'ver:"3.0"\nempty\n'},
+        {"rows": [{"tz": "UTC"}]},
+        {"text": 'ver:"3.0"\nempty\n'},
+    ]
+
+    seed_result = await history_ops.write_samples([seed])
+    result = await history_ops.write_samples(samples)
+    later_result = await history_ops.write_samples(samples)
+
+    assert seed_result.details["preferred_method"] == "batch_http"
+    assert result.success is True
+    assert result.samples_written == 1
+    assert result.error == (
+        "Point @missing-point was not found or has no configured timezone"
+    )
+    assert result.details["rejected_point_ids"] == ["missing-point"]
+    assert result.details["rejected_samples"] == 2
+    assert result.details["session_rejected_point_ids"] == ["missing-point"]
+    assert later_result.samples_written == 1
+    assert later_result.details["skipped_known_rejected_samples"] == 2
+    calls = mock_session.post_zinc.call_args_list
+    assert [call.args[0] for call in calls] == [
+        "read",
+        "hisWrite",
+        "read",
+        "hisWrite",
+        "read",
+        "hisWrite",
+    ]
+    assert "@missing-point" not in calls[3].args[1]
+    assert "@missing-point" not in calls[4].args[1]
+
+
+@pytest.mark.asyncio
+async def test_batch_write_suppresses_batch_when_every_point_lacks_timezone(
+    history_ops: HistoryOperations,
+    mock_session: AsyncMock,
+) -> None:
+    timestamp = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    samples = [
+        HistorySample(pointId="missing-point", timestamp=timestamp, value=1.0),
+        HistorySample(
+            pointId="missing-point",
+            timestamp=timestamp + timedelta(minutes=5),
+            value=2.0,
+        ),
+    ]
+    mock_session.post_zinc.return_value = {"rows": [{}]}
+
+    result = await history_ops.write_samples(samples)
+    later_result = await history_ops.write_samples(samples)
+
+    assert result.success is True
+    assert result.samples_written == 0
+    assert result.details["rejected_point_ids"] == ["missing-point"]
+    assert result.details["rejected_samples"] == 2
+    assert result.details["preferred_method"] == "batch_http"
+    assert later_result.success is True
+    assert later_result.samples_written == 0
+    assert later_result.details["skipped_known_rejected_samples"] == 2
+    mock_session.post_zinc.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_cached_single_write_skips_points_without_timezones(
+    history_ops: HistoryOperations,
+    mock_session: AsyncMock,
+) -> None:
+    timestamp = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    seed = HistorySample(pointId="good-point", timestamp=timestamp, value=1.0)
+    samples = [
+        HistorySample(pointId="missing-point", timestamp=timestamp, value=2.0),
+        HistorySample(pointId="good-point", timestamp=timestamp, value=3.0),
+    ]
+    mock_session.post_zinc.side_effect = [
+        {"meta": {"err": True, "dis": "batch unavailable"}},
+        {"text": 'ver:"3.0" errType:"test"\nempty\n'},
+        {"rows": [{"tz": "UTC"}]},
+        {"text": 'ver:"3.0"\nempty\n'},
+        {"rows": [{}, {"tz": "UTC"}]},
+        {"text": 'ver:"3.0"\nempty\n'},
+    ]
+
+    seed_result = await history_ops.write_samples([seed])
+    result = await history_ops.write_samples(samples)
+
+    assert seed_result.details["preferred_method"] == "single_http"
+    assert result.success is True
+    assert result.samples_written == 1
+    assert result.details["method"] == "single_http"
+    assert result.details["rejected_point_ids"] == ["missing-point"]
+    assert result.details["rejected_samples"] == 1
+    assert result.details["session_rejected_point_ids"] == ["missing-point"]
+    assert [call.args[0] for call in mock_session.post_zinc.call_args_list] == [
+        "read",
+        "evalAll",
+        "read",
+        "hisWrite",
+        "read",
+        "hisWrite",
+    ]
+    assert "@missing-point" not in mock_session.post_zinc.call_args_list[5].args[1]
 
 
 @pytest.mark.asyncio

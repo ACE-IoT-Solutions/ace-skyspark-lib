@@ -472,10 +472,12 @@ class HistoryOperations:
             HistoryWriteResult
         """
         point_ids = list(dict.fromkeys(sample.point_id for sample in samples))
-        point_timezones = await self._read_point_timezones(point_ids)
+        point_timezones, missing_timezone_point_ids = await self._read_point_timezones(point_ids)
 
         by_timezone: dict[str, list[HistorySample]] = defaultdict(list)
         for sample in samples:
+            if sample.point_id in missing_timezone_point_ids:
+                continue
             timezone_name = point_timezones[sample.point_id]
             timezone = _resolve_timezone(timezone_name, sample.timestamp)
             by_timezone[timezone_name].append(
@@ -483,8 +485,12 @@ class HistoryOperations:
             )
 
         request_count = 0
-        rejected_point_ids: set[str] = set()
-        rejection_errors: list[str] = []
+        rejected_point_ids = set(missing_timezone_point_ids)
+        rejection_errors = (
+            [self._missing_point_timezones_error(missing_timezone_point_ids)]
+            if missing_timezone_point_ids
+            else []
+        )
         for timezone_name, timezone_samples in by_timezone.items():
             timezone_samples.sort(key=lambda sample: (sample.timestamp, sample.point_id))
             for request_samples in self._chunk_list(timezone_samples, max_request_size):
@@ -576,9 +582,11 @@ class HistoryOperations:
     ) -> HistoryWriteResult:
         """Write one point per standard Zinc hisWrite request as a final fallback."""
         point_ids = list(dict.fromkeys(sample.point_id for sample in samples))
-        point_timezones = await self._read_point_timezones(point_ids)
+        point_timezones, rejected_point_ids = await self._read_point_timezones(point_ids)
         by_point: dict[str, list[HistorySample]] = defaultdict(list)
         for sample in samples:
+            if sample.point_id in rejected_point_ids:
+                continue
             timezone_name = point_timezones[sample.point_id]
             timezone = _resolve_timezone(timezone_name, sample.timestamp)
             by_point[sample.point_id].append(
@@ -605,20 +613,36 @@ class HistoryOperations:
                 self._raise_for_his_write_error(response)
                 request_count += 1
 
+        rejected_samples = sum(sample.point_id in rejected_point_ids for sample in samples)
         logger.info(
             "write_samples_single_http_complete",
-            count=len(samples),
+            count=len(samples) - rejected_samples,
+            rejected_samples=rejected_samples,
+            rejected_points=len(rejected_point_ids),
             requests=request_count,
             points=len(by_point),
         )
         return HistoryWriteResult(
             success=True,
-            samplesWritten=len(samples),
-            details={"requests": request_count, "points": len(by_point)},
+            samplesWritten=len(samples) - rejected_samples,
+            error=(
+                self._missing_point_timezones_error(rejected_point_ids)
+                if rejected_point_ids
+                else None
+            ),
+            details={
+                "requests": request_count,
+                "points": len(by_point),
+                "rejected_point_ids": sorted(rejected_point_ids),
+                "rejected_samples": rejected_samples,
+            },
         )
 
-    async def _read_point_timezones(self, point_ids: list[str]) -> dict[str, str]:
-        """Read and validate configured timezones for a set of points."""
+    async def _read_point_timezones(
+        self,
+        point_ids: list[str],
+    ) -> tuple[dict[str, str], set[str]]:
+        """Read point timezones and identify missing or unconfigured points."""
         response = await self.session.post_zinc(
             "read",
             ZincEncoder.encode_read_by_ids(point_ids),
@@ -629,16 +653,39 @@ class HistoryOperations:
 
         rows = response.get("rows", [])
         point_timezones: dict[str, str] = {}
+        rejected_point_ids: set[str] = set()
         for index, point_id in enumerate(point_ids):
             row = rows[index] if index < len(rows) else None
             timezone_name = row.get("tz") if isinstance(row, dict) else None
             if isinstance(timezone_name, dict):
                 timezone_name = timezone_name.get("val") or timezone_name.get("tz")
             if not timezone_name:
-                msg = f"Point @{point_id} was not found or has no configured timezone"
-                raise HistoryWriteError(msg)
+                rejected_point_ids.add(point_id)
+                continue
             point_timezones[point_id] = str(timezone_name)
-        return point_timezones
+
+        if rejected_point_ids:
+            logger.warning(
+                "read_point_timezones_rejected_points",
+                point_ids=sorted(rejected_point_ids),
+                rejected_points=len(rejected_point_ids),
+            )
+        return point_timezones, rejected_point_ids
+
+    @staticmethod
+    def _missing_point_timezones_error(point_ids: set[str]) -> str:
+        """Build a bounded error message for missing point timezone configuration."""
+        sorted_ids = sorted(point_ids)
+        displayed_ids = ", ".join(f"@{point_id}" for point_id in sorted_ids[:10])
+        remaining = len(sorted_ids) - 10
+        suffix = f", and {remaining} more" if remaining > 0 else ""
+        noun = "Point" if len(sorted_ids) == 1 else "Points"
+        verb = "was" if len(sorted_ids) == 1 else "were"
+        possession = "has" if len(sorted_ids) == 1 else "have"
+        return (
+            f"{noun} {displayed_ids}{suffix} "
+            f"{verb} not found or {possession} no configured timezone"
+        )
 
     @staticmethod
     def _raise_for_his_write_error(response: dict[str, object]) -> None:
