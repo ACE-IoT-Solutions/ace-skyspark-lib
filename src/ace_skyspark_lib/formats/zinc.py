@@ -1,6 +1,6 @@
 """Zinc grid encoding for Haystack operations."""
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Any
 
@@ -218,9 +218,27 @@ class ZincEncoder:
 
         Returns:
             Zinc grid string
+
+        Raises:
+            ValueError: If a point has no ID or an ID occurs more than once
         """
         if not points:
             return ""
+
+        point_ids: list[str] = []
+        for point in points:
+            if not point.id:
+                msg = f"Point {point.dis} must have an ID for update operations"
+                raise ValueError(msg)
+            point_ids.append(point.id)
+
+        duplicate_ids = sorted(
+            point_id for point_id, count in Counter(point_ids).items() if count > 1
+        )
+        if duplicate_ids:
+            formatted_ids = ", ".join(f"@{point_id}" for point_id in duplicate_ids)
+            msg = f"Duplicate point IDs in update batch: {formatted_ids}"
+            raise ValueError(msg)
 
         grid = 'ver:"3.0" commit:"update"\n'
 
@@ -239,10 +257,6 @@ class ZincEncoder:
 
         # Data rows
         for point in points:
-            if not point.id:
-                msg = f"Point {point.dis} must have an ID for update operations"
-                raise ValueError(msg)
-
             zinc_dict = point.to_zinc_dict()
             row_values: list[str] = []
             for tag in sorted(all_tags):

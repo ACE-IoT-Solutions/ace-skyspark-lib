@@ -310,6 +310,44 @@ class TestZincEncoderPointUpdates:
         with pytest.raises(ValueError, match="must have an ID"):
             ZincEncoder.encode_commit_update_points([point])
 
+    def test_update_rejects_duplicate_point_ids(self) -> None:
+        """Reject duplicate diffs before sending an invalid commit grid."""
+        points = [
+            Point(
+                id="duplicate-point",
+                dis="First update",
+                refName="first_update",
+                siteRef="site123",
+                equipRef="ahu1",
+                kind="Number",
+                markerTags=["sensor"],
+            ),
+            Point(
+                id="unique-point",
+                dis="Unique update",
+                refName="unique_update",
+                siteRef="site123",
+                equipRef="ahu1",
+                kind="Number",
+                markerTags=["sensor"],
+            ),
+            Point(
+                id="duplicate-point",
+                dis="Conflicting update",
+                refName="conflicting_update",
+                siteRef="site123",
+                equipRef="ahu1",
+                kind="Number",
+                markerTags=["sensor"],
+            ),
+        ]
+
+        with pytest.raises(
+            ValueError,
+            match=r"Duplicate point IDs in update batch: @duplicate-point$",
+        ):
+            ZincEncoder.encode_commit_update_points(points)
+
     def test_encode_multiple_point_updates(self) -> None:
         """Test encoding multiple point updates."""
         points = [

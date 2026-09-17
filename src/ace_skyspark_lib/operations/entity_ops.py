@@ -159,7 +159,7 @@ class EntityOperations:
 
         Raises:
             CommitError: If commit operation fails
-            ValueError: If any point is missing an ID
+            ValueError: If any point is missing an ID or point IDs are duplicated
         """
         if not points:
             return []
