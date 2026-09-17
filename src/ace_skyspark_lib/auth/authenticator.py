@@ -38,7 +38,7 @@ class ScramAuthenticator:
         username: str,
         password: str,
         session: httpx.AsyncClient,
-        session_max_age_seconds: int = 900,
+        session_max_age_seconds: int = 3600,
     ) -> None:
         """Initialize authenticator.
 

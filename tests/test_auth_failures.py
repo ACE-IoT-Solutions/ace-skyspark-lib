@@ -95,3 +95,37 @@ async def test_failed_refresh_is_shared_with_queued_callers() -> None:
     assert authenticator.calls == 1
     assert all(isinstance(result, AuthenticationError) for result in results)
     assert any("refresh is in backoff" in str(result) for result in results)
+
+
+@pytest.mark.asyncio
+async def test_refresh_closes_replaced_server_session() -> None:
+    authenticator = StubAuthenticator(failures_remaining=0)
+    token_releaser = AsyncMock()
+    manager = TokenManager(
+        authenticator,  # type: ignore[arg-type]
+        token_releaser=token_releaser,
+    )
+    manager._token = "old-token"  # noqa: S105
+    manager._token_expiry = None
+
+    token = await manager.refresh_token()
+
+    assert token == "test-token"  # noqa: S105
+    token_releaser.assert_awaited_once_with("old-token")
+
+
+@pytest.mark.asyncio
+async def test_failed_replaced_session_close_keeps_new_token() -> None:
+    authenticator = StubAuthenticator(failures_remaining=0)
+    token_releaser = AsyncMock(side_effect=RuntimeError("close unavailable"))
+    manager = TokenManager(
+        authenticator,  # type: ignore[arg-type]
+        token_releaser=token_releaser,
+    )
+    manager._token = "old-token"  # noqa: S105
+    manager._token_expiry = None
+
+    token = await manager.refresh_token()
+
+    assert token == "test-token"  # noqa: S105
+    assert manager.get_cached_token() == "test-token"

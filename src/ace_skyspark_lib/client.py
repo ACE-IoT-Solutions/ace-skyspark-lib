@@ -1,5 +1,6 @@
 """Main SkySpark client class."""
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -34,7 +35,7 @@ class SkysparkClient:
         timeout: float = 30.0,
         max_retries: int = 3,
         pool_size: int = 10,
-        session_max_age_seconds: int = 900,
+        session_max_age_seconds: int = 3600,
     ) -> None:
         """Initialize SkySpark client.
 
@@ -99,6 +100,7 @@ class SkysparkClient:
             authenticator,
             cache_duration=self.session_max_age_seconds,
             max_retries=self.max_retries,
+            token_releaser=self._close_auth_token,
         )
 
         # Authenticate immediately
@@ -123,11 +125,50 @@ class SkysparkClient:
 
     async def __aexit__(self, exc_type: type, exc_val: Exception, exc_tb: object) -> None:
         """Async context manager exit."""
-        if self._auth_session:
-            await self._auth_session.aclose()
-        if self._api_session:
-            await self._api_session.aclose()
+        token_manager = self._token_manager
+        if token_manager is not None:
+            token = token_manager.get_cached_token()
+            if token:
+                try:
+                    await self._close_auth_token(token)
+                except Exception as exc:
+                    # Cleanup is best effort and must not mask the workflow exception.
+                    logger.warning("auth_session_close_failed", error=str(exc))
+                finally:
+                    token_manager.invalidate()
+
+        sessions = [
+            session
+            for session in (self._auth_session, self._api_session)
+            if session is not None
+        ]
+        close_results = await asyncio.gather(
+            *(session.aclose() for session in sessions),
+            return_exceptions=True,
+        )
+        for result in close_results:
+            if isinstance(result, BaseException):
+                logger.warning("http_session_close_failed", error=str(result))
         logger.info("skyspark_client_closed")
+
+    async def _close_auth_token(self, token: str) -> None:
+        """Close one server-side Haystack authentication session."""
+        if self._api_session is None:
+            msg = "API session is not initialized"
+            raise RuntimeError(msg)
+
+        response = await self._api_session.post(
+            f"{self.base_url}/{self.project}/close",
+            content='ver:"3.0"\nempty\n',
+            headers={
+                "Authorization": f"Bearer authToken={token}",
+                "Content-Type": "text/zinc",
+                "Accept": "application/json",
+            },
+            follow_redirects=False,
+        )
+        response.raise_for_status()
+        logger.info("auth_session_closed")
 
     # Query operations
     async def read(self, filter_expr: str) -> list[dict]:

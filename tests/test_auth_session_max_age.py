@@ -42,7 +42,7 @@ class FakeScramClient:
 
 
 @pytest.mark.asyncio
-async def test_client_final_requests_default_15_minute_session() -> None:
+async def test_client_final_requests_default_one_hour_session() -> None:
     session = FakeSession()
     authenticator = ScramAuthenticator(
         base_url="http://skyspark.example/api",
@@ -56,7 +56,7 @@ async def test_client_final_requests_default_15_minute_session() -> None:
     token = await authenticator._client_final("handshake-token", "server-first")
 
     assert token == "test-token"  # noqa: S105
-    assert "maxAge=900" in session.auth_headers[-1]
+    assert "maxAge=3600" in session.auth_headers[-1]
 
 
 def test_client_token_cache_defaults_to_session_max_age() -> None:
@@ -67,4 +67,4 @@ def test_client_token_cache_defaults_to_session_max_age() -> None:
         password="password",  # noqa: S106
     )
 
-    assert client.session_max_age_seconds == 900
+    assert client.session_max_age_seconds == 3600

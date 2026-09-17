@@ -1,6 +1,7 @@
 """Token management with caching and refresh."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
 import structlog
@@ -21,6 +22,7 @@ class TokenManager:
         max_retries: int = 3,
         initial_retry_delay: float = 1.0,
         max_retry_delay: float = 30.0,
+        token_releaser: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         """Initialize token manager.
 
@@ -30,12 +32,14 @@ class TokenManager:
             max_retries: Authentication retries after the initial attempt
             initial_retry_delay: Delay before the first retry in seconds
             max_retry_delay: Maximum delay between retries in seconds
+            token_releaser: Optional callback that closes a replaced server session
         """
         self.authenticator = authenticator
         self.cache_duration = cache_duration
         self.max_retries = max_retries
         self.initial_retry_delay = initial_retry_delay
         self.max_retry_delay = max_retry_delay
+        self.token_releaser = token_releaser
         self._token: str | None = None
         self._token_expiry: datetime | None = None
         self._refresh_lock = asyncio.Lock()
@@ -86,6 +90,8 @@ class TokenManager:
                 )
                 raise AuthenticationError(msg) from self._last_refresh_error
 
+            previous_token = self._token
+            new_token: str | None = None
             for attempt in range(self.max_retries + 1):
                 logger.info(
                     "refreshing_auth_token",
@@ -93,7 +99,7 @@ class TokenManager:
                     max_attempts=self.max_retries + 1,
                 )
                 try:
-                    self._token = await self.authenticator.authenticate()
+                    new_token = await self.authenticator.authenticate()
                     break
                 except AuthenticationError as exc:
                     self._last_refresh_error = exc
@@ -114,12 +120,25 @@ class TokenManager:
                     )
                     await asyncio.sleep(delay)
 
+            assert new_token is not None
+            self._token = new_token
             self._token_expiry = datetime.now(UTC) + timedelta(seconds=self.cache_duration)
             self._last_refresh_error = None
             self._next_refresh_at = 0.0
 
             logger.info("token_refreshed", expires_at=self._token_expiry.isoformat())
-            assert self._token is not None
+
+            if (
+                previous_token
+                and previous_token != new_token
+                and self.token_releaser is not None
+            ):
+                try:
+                    await self.token_releaser(previous_token)
+                except Exception as exc:
+                    # A failed close must not discard the newly acquired token.
+                    logger.warning("replaced_auth_session_close_failed", error=str(exc))
+
             return self._token
 
     def _retry_delay(self, attempt: int) -> float:
