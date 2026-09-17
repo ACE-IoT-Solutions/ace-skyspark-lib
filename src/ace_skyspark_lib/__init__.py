@@ -9,7 +9,7 @@ from ace_skyspark_lib.models.history import (
     TimeRange,
 )
 
-__version__ = "0.1.31"
+__version__ = "0.1.32"
 
 __all__ = [
     "Equipment",

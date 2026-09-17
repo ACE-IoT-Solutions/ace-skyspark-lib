@@ -535,6 +535,11 @@ class TestZincEncoderHistoryBatch:
     def test_encode_read_by_ids(self) -> None:
         assert ZincEncoder.encode_read_by_ids(["a", "b"]) == 'ver:"3.0"\nid\n@a\n@b\n'
 
+    @pytest.mark.parametrize("entity_id", ["", "@already-prefixed", "line\nbreak", "has space"])
+    def test_encode_read_by_ids_rejects_invalid_refs(self, entity_id: str) -> None:
+        with pytest.raises(ValueError, match="Invalid Haystack Ref ID"):
+            ZincEncoder.encode_read_by_ids([entity_id])
+
 
 class TestZincEncoderReadOperations:
     """Test Zinc encoding for read operations."""

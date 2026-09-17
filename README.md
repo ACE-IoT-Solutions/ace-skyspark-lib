@@ -142,6 +142,9 @@ points = await client.create_points([
 # Read by ID
 site = await client.read_by_id("p:demo:r:site_id")
 
+# Read multiple IDs in request order (missing IDs are returned as empty dictionaries)
+entities = await client.read_by_ids(["p:demo:r:site_id", "p:demo:r:equip_id"])
+
 # Read with filters
 equipment = await client.read_equipment(site_ref="site_id")
 points = await client.read_points(equip_ref="equip_id")

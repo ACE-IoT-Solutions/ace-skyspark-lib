@@ -158,6 +158,13 @@ class SkysparkClient:
             raise RuntimeError(msg)
         return await self._query.read_by_id(entity_id)
 
+    async def read_by_ids(self, entity_ids: list[str]) -> list[dict]:
+        """Read entities in request order, with empty dictionaries for missing IDs."""
+        if not self._query:
+            msg = "Client not initialized. Use 'async with' context manager."
+            raise RuntimeError(msg)
+        return await self._query.read_by_ids(entity_ids)
+
     async def read_sites(self) -> list[dict]:
         """Read all sites in project.
 

@@ -1,11 +1,14 @@
 """Zinc grid encoding for Haystack operations."""
 
+import re
 from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Any
 
 from ace_skyspark_lib.models.entities import SKYSPARK_COMPUTED_TAGS, Equipment, Point, Site
 from ace_skyspark_lib.models.history import HistorySample
+
+_HAYSTACK_REF_ID_PATTERN = re.compile(r"^[A-Za-z0-9_:.~-]+$")
 
 
 def _escape_zinc_string(s: str) -> str:
@@ -384,6 +387,19 @@ class ZincEncoder:
         """Encode a standard ordered read-by-id request grid."""
         if not entity_ids:
             return ""
+
+        invalid_id = next(
+            (
+                entity_id
+                for entity_id in entity_ids
+                if not _HAYSTACK_REF_ID_PATTERN.fullmatch(entity_id)
+            ),
+            None,
+        )
+        if invalid_id is not None:
+            msg = f"Invalid Haystack Ref ID: {invalid_id!r}"
+            raise ValueError(msg)
+
         return 'ver:"3.0"\nid\n' + "".join(f"@{entity_id}\n" for entity_id in entity_ids)
 
     @staticmethod

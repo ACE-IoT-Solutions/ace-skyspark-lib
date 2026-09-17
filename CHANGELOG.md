@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.32] - 2026-09-17
+
+### Added
+- Add ordered multi-ID reads through the standard Haystack `read` request grid.
+
+### Fixed
+- Raise `ServerError` for SkySpark read error grids instead of reporting them as
+  successful zero-row reads.
+- Bound logged filter previews so large filters do not overwhelm task logs.
+- Validate Ref IDs before embedding them in ordered Zinc request grids.
+- Route single-ID reads through the standard ordered read operation.
+
 ## [0.1.31] - 2026-09-17
 
 ### Fixed
